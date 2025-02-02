@@ -1,43 +1,11 @@
-import json
-import requests
+from db import TokensConnection
+from api_connection import ApiConnection
 
-import secrets
+def bank_list():
+    con = TokensConnection()
+    access_token = con.access_token
+    bank_list = ApiConnection.retrieve_bank_list(access_token=access_token)
+    print(bank_list)
 
-BASE_API_URL = "https://bankaccountdata.gocardless.com/api/v2/"
-
-
-def get_access_token():
-    url = BASE_API_URL + "token/new/"
-    headers = {
-        "accept": "application/json",
-        "ContentType": "application/json"
-    }
-    data = {
-        "secret_id": secrets.GOCARDLESS_SECRET_ID,
-        "secret_key": secrets.GOCARDLESS_SECRET_KEY,
-        }
-    r = requests.post(url=url, headers=headers, data=data)
-    content = json.loads(r.content)
-    return r
-
-def get_refresh_token():
-    url = BASE_API_URL + "token/refresh/"
-    headers = {
-        "accept": "application/json",
-        "ContentType": "application/json"
-    }
-    data = {"refresh_token": ""}
-
-def get_available_banks(country: str = "gb") -> list[dict[str, str]]:
-    url = BASE_API_URL + f"institutions/?country={country}"
-    headers = {
-        "accept": "application/json",
-        "Authorization": f"Bearer {secrets.GOCARDLESS_SECRET_ID}"
-    }
-    r = requests.get(url=url,headers=headers)
-    return r
-
-get_access_token()
-
-def main():
+bank_list()
     
