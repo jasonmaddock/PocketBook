@@ -69,4 +69,10 @@ class AccountsConnection:
             args
             )
         self.con.commit()
+
+    def retrieve_accounts(self, user_id):
+        self.cursor.execute(
+            "SELECT * FROM accounts WHERE UserId = ?", (user_id,)
+        )
+        return self.cursor.fetchall()
     

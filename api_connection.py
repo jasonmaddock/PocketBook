@@ -62,7 +62,7 @@ class ApiConnection:
     
     @classmethod
     def build_account_link(cls, access_token, bank_id, redirect="http://www.yourwebpage.com"):
-        url = BASE_API_URL + f"requisitions/"
+        url = BASE_API_URL + "requisitions/"
         headers = {
             "accept": "application/json",
             "Content-Type": "application/json",
@@ -75,5 +75,20 @@ class ApiConnection:
         r = requests.post(url=url, headers=headers, data=json.dumps(data))
         content = json.loads(r.content)
         return content
+    
+    @classmethod
+    def retrieve_accounts(cls, requisition_id, access_token):
+        url = BASE_API_URL + f"requisitions/{requisition_id}"
+        headers = {
+            "accept": "application/json",
+            "Authorization": f"Bearer {access_token}",
+        }
+        r = requests.get(url=url, headers=headers)
+        content = json.loads(r.content)
+        return content
+
+
+    def retrieve_transactions(cls, access_token):
+        pass
     
     

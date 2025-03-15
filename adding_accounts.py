@@ -29,10 +29,22 @@ def add_account(bank_id, user_id=1):
     acc.store_account_info((user_id, bank_id, "None", req["id"], valid_til))
     return "Success"
 
+def list_accounts(user_id=1):
+    con = TokensConnection()
+    acc = AccountsConnection()
+    access_token = con.access_token
+    accounts = acc.retrieve_accounts(user_id)
+    for account in accounts:
+        account_list = ApiConnection.retrieve_accounts(account["ReqId"], access_token)
+        print(account_list)
+
+
 
 if __name__ == "__main__":
     # generate_bank_list()
-    add_account("NATIONWIDE_NAIAGB21")
+    # add_account("NATIONWIDE_NAIAGB21")
+    list_accounts()
+
 
 
 
