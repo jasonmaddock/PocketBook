@@ -86,6 +86,20 @@ class ApiConnection:
         r = requests.get(url=url, headers=headers)
         content = json.loads(r.content)
         return content
+    
+    @classmethod
+    def get_balance_and_transactions(cls, account_id, access_token):
+        results = {"balances": None, "transactions": None}
+        for k in results.keys():
+            url = BASE_API_URL + f"accounts/{account_id}/{k}/"
+            headers = {
+                "accept": "application/json",
+                "Authorization": f"Bearer {access_token}",
+            }
+            r = requests.get(url=url, headers=headers)
+            results[k] = json.loads(r.content)[k]
+        return results
+
 
 
     def retrieve_transactions(cls, access_token):

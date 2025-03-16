@@ -1,6 +1,6 @@
 import argparse
 
-from adding_accounts import generate_bank_list, add_account
+from adding_accounts import generate_bank_list, add_account, list_accounts, get_balances_and_transactions
 
 def main():
     parser = argparse.ArgumentParser(description = "PocketBook")
@@ -8,6 +8,7 @@ def main():
     parser.add_argument("-l", "--list_banks")
     parser.add_argument("-a", "--add_bank")
     parser.add_argument("-s", "--show_accounts")
+    parser.add_argument("-b", "--balance_transactions")
 
     args = parser.parse_args()
 
@@ -25,7 +26,12 @@ def main():
         print("Bank not found")
     
     elif args.show_accounts != None:
-        pass
+        print(list_accounts())
+
+    elif args.balance_transactions != None:
+        accounts = list_accounts()
+        print(get_balances_and_transactions(accounts))
+
 
 
         
@@ -33,4 +39,5 @@ if __name__ == "__main__":
     # calling the main function
     main()
 
-# generate_bank_list()
+accounts = list_accounts()
+print(get_balances_and_transactions(accounts))
