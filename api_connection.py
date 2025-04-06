@@ -99,10 +99,4 @@ class ApiConnection:
             r = requests.get(url=url, headers=headers)
             results[k] = json.loads(r.content)[k]
         return results
-
-
-
-    def retrieve_transactions(cls, access_token):
-        pass
-    
     

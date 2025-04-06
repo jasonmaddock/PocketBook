@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from db import TokensConnection, AccountsConnection
+from db import TokensConnection, AccountsConnection, TransactionsConnection
 from api_connection import ApiConnection
 
 def generate_bank_list(country_code="GB"):
@@ -42,12 +42,15 @@ def list_accounts(user_id=1):
 def get_balances_and_transactions(account_list):
     con = TokensConnection()
     acc = AccountsConnection()
+    tra = TransactionsConnection()
     access_token = con.access_token
     balances_and_transactions = {}
     for account in account_list:
         for account_id in account["accounts"]:
             b_n_t = ApiConnection.get_balance_and_transactions(account_id, access_token)
             balances_and_transactions[account_id] = {"balance": b_n_t["balances"][0]["balanceAmount"]["amount"], "transactions": b_n_t["transactions"]}
+            acc.add_balance(account_id, balances_and_transactions[account_id]["balance"])
+            tra.add_transactions(account_id, balances_and_transactions[account_id]["transactions"])
     return balances_and_transactions
 
 

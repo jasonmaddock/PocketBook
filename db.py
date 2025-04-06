@@ -6,12 +6,13 @@ from api_connection import ApiConnection as api
 
 BASE_API_URL = "https://bankaccountdata.gocardless.com/api/v2/"
 
-
-class TokensConnection:
+class Db:
     def __init__(self):
         self.con = sqlite3.connect("pocket.db")
         self.con.row_factory = sqlite3.Row
         self.cursor = self.con.cursor()
+
+class TokensConnection(Db):
 
     add_token_sql = f"""INSERT INTO tokens (TokenType,Token,ValidFor,CreatedDt)
                         VALUES(?,?,?,?)"""
@@ -57,12 +58,7 @@ class TokensConnection:
         return access_token
 
 
-class AccountsConnection:
-    def __init__(self):
-        self.con = sqlite3.connect("pocket.db")
-        self.con.row_factory = sqlite3.Row
-        self.cursor = self.con.cursor()
-
+class AccountsConnection(Db):
     def store_account_info(self, args):
         self.cursor.execute(
             "INSERT INTO accounts (UserId, BankId, EuaId, ReqId, ValidTil) VALUES (?,?,?,?,?)",
@@ -75,4 +71,29 @@ class AccountsConnection:
             "SELECT * FROM accounts WHERE UserId = ?", (user_id,)
         )
         return self.cursor.fetchall()
+    
+    def add_balance(self, acc_id, balance):
+        dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.cursor.execute(
+            "UPDATE accounts SET Balance = (?), BalanceDt = (?) WHERE AccId = (?)",
+            (balance, dt, acc_id,)
+        )
+        self.con.commit()
+
+
+class TransactionsConnection(Db):
+    def add_transactions(self, transacitons, acc_id, user_id):
+        trans = [
+            (
+                t["transactionId"],
+                acc_id, 
+                user_id, 
+                t["transacitonAmount"]["amount"], 
+                t["bookingDate"], 
+                t.get("debtorName") or t.get("creditorName"),
+                t["remittanceInformationUnstructured"],
+            ) for t in transacitons
+        ]
+        self.cursor.executemany("INSERT INTO transactions (ID, AccountId, UserId , Amount, Date, Debtor, Description) VALUES (?,?,?,?,?,?,?)")
+        self.con.commit()
     
