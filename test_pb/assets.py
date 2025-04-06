@@ -205,3 +205,49 @@ trans_and_balances = {'balances': [{'balanceAmount': {'amount': '1799.41', 'curr
     'remittanceInformationUnstructured': 'Payment to JASON MADDOCK 608371 14159187',
     'proprietaryBankTransactionCode': 'PaymentType: WP',
     'internalTransactionId': 'inttransid'}]}}
+
+tokens_table = """
+CREATE TABLE tokens (
+TokenID INTEGER PRIMARY KEY AUTOINCREMENT,
+TokenType CHAR(8),
+Token VARCHAR(1000),
+ValidFor INT(255),
+CreatedDt DATETIME
+);
+"""
+
+requisitions_table = """
+CREATE TABLE accounts(
+ID INTEGER PRIMARY KEY AUTOINCREMENT,
+UserId TEXT,
+BankId TEXT,
+EuaId TEXT,
+ReqId TEXT,
+ValidTil DATETIME
+);
+"""
+
+accounts_table = """
+CREATE TABLE accounts(
+AccountID INTEGER PRIMARY KEY AUTOINCREMENT,
+UserId TEXT,
+BankId TEXT,
+EuaId TEXT,
+ReqId TEXT,
+ValidTil DATETIME
+Balance DECIMAL(16,2),
+BalanceDt = DATETIME
+);
+"""
+
+transactions_table = """
+CREATE TABLE transactions(
+ID INTEGER PRIMARY KEY AUTOINCREMENT,
+AccountId TEXT,
+UserId TEXT,
+Amount DECIMAL(16,2),
+Date DATETIME,
+Debtor TEXT,
+Description TEXT
+);
+"""
