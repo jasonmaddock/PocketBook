@@ -1,6 +1,7 @@
 import pytest
 import sqlite3
-from test_pb import assets
+
+from test import assets
 
 from db import TokensConnection
 
@@ -37,6 +38,6 @@ def tokens_connection(test_db):
 
 
 
-def test_test(tokens_table):
-    print("Help!!1")
+def test_test():
+    assert 1 == 1
 
