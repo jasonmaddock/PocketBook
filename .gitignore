@@ -1,4 +1,14 @@
-secrets.py
-__pycache__
-tables.txt
+# Generated artifacts
+__pycache__/
+*.pyc
+
+# Local data
 pocket.db
+test.db
+
+# Docs generated locally
+db_schema.md
+
+# Local env files
+dev.env
+.env

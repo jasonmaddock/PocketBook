@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PocketBook Accounts</title>
+  <style>
+    body { font-family: "Helvetica Neue", Arial, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; border-bottom: 1px solid #1f2937; text-align: left; }
+    nav a { color: #e2e8f0; text-decoration: none; padding: 6px 10px; border-radius: 8px; border:1px solid #1f2937; background:#0b1220; }
+  </style>
+</head>
+<body>
+  <div style="display:flex; align-items:center; gap:16px; margin-bottom:12px;">
+    <div style="font-size:22px; font-weight:700;">PocketBook</div>
+    <nav style="display:flex; gap:10px;">
+      <a href="/">Dashboard</a>
+      <a href="/categories">Categories</a>
+      <a href="/transactions">Transactions</a>
+      <a href="/accounts">Accounts</a>
+    </nav>
+  </div>
+  <h2>Accounts</h2>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div style="font-size:14px; font-weight:600; margin-bottom:6px;">Link a bank</div>
+    <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
+      <label for="country" style="font-size:12px;">Country</label>
+      <input id="country" value="GB" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0; width:80px;" />
+      <button id="load-banks-btn">Load banks</button>
+    </div>
+    <div id="bank-results" style="max-height:240px; overflow:auto; border:1px solid #1f2937; border-radius:10px; padding:8px; background:#0b1220;"></div>
+    <div id="link-output" style="margin-top:10px; font-size:14px;"></div>
+  </div>
+
+  <table id="acc-table">
+    <thead>
+      <tr>
+        <th>Bank</th><th>Req ID</th><th>Provider Account</th><th>Balance</th><th>Balance Dt</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    async function fetchJson(url, options={}) {
+      const res = await fetch(url, {headers: {"Content-Type": "application/json"}, ...options});
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+
+    async function loadAccounts() {
+      const data = await fetchJson('/api/accounts');
+      const tbody = document.querySelector('#acc-table tbody');
+      tbody.innerHTML = '';
+      data.forEach(acc => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${acc.bank_id || ''}</td>
+          <td>${acc.req_id || ''}</td>
+          <td>${acc.provider_account_id || ''}</td>
+          <td>${acc.balance || ''}</td>
+          <td>${acc.balance_dt || ''}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadBanks() {
+      const country = document.getElementById('country').value || 'GB';
+      const results = document.getElementById('bank-results');
+      results.innerHTML = 'Loading...';
+      try {
+        const banks = await fetchJson(`/api/banks?country=${encodeURIComponent(country)}`);
+        results.innerHTML = '';
+        banks.forEach(bank => {
+          const div = document.createElement('div');
+          div.style.display = 'flex';
+          div.style.justifyContent = 'space-between';
+          div.style.alignItems = 'center';
+          div.style.padding = '6px 4px';
+          div.innerHTML = `
+            <div>
+              <div style="font-weight:600;">${bank.name}</div>
+              <div style="font-size:12px; color:#94a3b8;">${bank.id}</div>
+            </div>
+            <button data-bank="${bank.id}">Link</button>
+          `;
+          div.querySelector('button').addEventListener('click', () => startLink(bank.id));
+          results.appendChild(div);
+        });
+        if (!banks.length) {
+          results.innerHTML = 'No banks returned for this country.';
+        }
+      } catch (err) {
+        results.innerHTML = 'Failed to load banks: ' + err.message;
+      }
+    }
+
+    async function startLink(bankId) {
+      const output = document.getElementById('link-output');
+      output.innerHTML = 'Creating requisition...';
+      try {
+        const resp = await fetchJson('/api/requisitions', {method: 'POST', body: JSON.stringify({bank_id: bankId, user_id: 1})});
+        output.innerHTML = `
+          <div>Requisition created.</div>
+          <a href="${resp.link}" target="_blank" style="color:#93c5fd;">Open bank authorisation link</a>
+        `;
+      } catch (err) {
+        output.innerHTML = 'Failed to create requisition: ' + err.message;
+      }
+    }
+
+    document.getElementById('load-banks-btn').addEventListener('click', loadBanks);
+    loadAccounts();
+  </script>
+</body>
+</html>

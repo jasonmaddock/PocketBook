@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PocketBook Transactions</title>
+  <style>
+    body { font-family: "Helvetica Neue", Arial, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); margin-bottom: 16px; }
+    .transactions { width: 100%; border-collapse: collapse; }
+    .transactions th, .transactions td { padding: 10px; border-bottom: 1px solid #1f2937; text-align: left; }
+    .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; background: #1f2937; }
+    nav a { color: #e2e8f0; text-decoration: none; padding: 6px 10px; border-radius: 8px; border:1px solid #1f2937; background:#0b1220; }
+    button { background: #2563eb; border: none; color: white; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div style="display:flex; align-items:center; gap:16px; margin-bottom:12px;">
+    <div style="font-size:22px; font-weight:700;">PocketBook</div>
+    <nav style="display:flex; gap:10px;">
+      <a href="/">Dashboard</a>
+      <a href="/categories">Categories</a>
+      <a href="/transactions">Transactions</a>
+      <a href="/accounts">Accounts</a>
+    </nav>
+  </div>
+  <h2>Transactions</h2>
+
+  <table class="transactions" id="tx-table">
+    <thead>
+      <tr>
+        <th>Date</th><th>Merchant</th><th>Description</th><th>Amount</th><th>Category</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; z-index:50;">
+    <div style="background:#0f172a; border:1px solid #1f2937; border-radius:12px; padding:20px; width:480px; color:#e2e8f0; box-shadow:0 10px 40px rgba(0,0,0,0.45);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div style="font-size:18px; font-weight:700;">Update transaction</div>
+        <button id="close-modal" style="background:#1f2937; padding:6px 10px;">X</button>
+      </div>
+      <div id="modal-body" style="font-size:14px;"></div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+        <div>
+          <label style="font-size:12px; color:#94a3b8;">Category</label><br/>
+          <select id="modal-category" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0b1220; color:#e2e8f0; width:100%;">
+          </select>
+          <div id="new-cat-wrap" style="margin-top:6px; display:none;">
+            <input id="new-cat-name" placeholder="New category name" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0b1220; color:#e2e8f0; width:100%;" />
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px; color:#94a3b8;">Subcategory</label><br/>
+          <select id="modal-subcategory" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0b1220; color:#e2e8f0; width:100%;">
+          </select>
+          <div id="new-sub-wrap" style="margin-top:6px; display:none;">
+            <input id="new-sub-name" placeholder="New subcategory name" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0b1220; color:#e2e8f0; width:100%;" />
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px; color:#94a3b8;">Create rule using</div>
+          <label><input type="checkbox" id="use-merchant" /> Merchant</label>
+          <label style="margin-left:10px;"><input type="checkbox" id="use-description" /> Description</label>
+        </div>
+        <div>
+          <label><input type="checkbox" id="reclassify-similar" /> Reclassify similar transactions (runs rule(s) across all)</label>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+          <button id="modal-save" style="background:#2563eb;">Save</button>
+        </div>
+        <div id="modal-status" style="font-size:12px; color:#cbd5e1;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function fetchJson(url, options={}) {
+      const res = await fetch(url, {headers: {"Content-Type": "application/json"}, ...options});
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+
+    async function loadCategories() {
+      const data = await fetchJson('/api/categories');
+      window._categories = data;
+      window._subcategories = [];
+      data.forEach(cat => {
+        (cat.subcategories || []).forEach(sc => window._subcategories.push(sc));
+      });
+    }
+
+    function renderTransactions(transactions) {
+      const tbody = document.querySelector('#tx-table tbody');
+      tbody.innerHTML = '';
+      transactions.forEach(tx => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${tx.date || ''}</td>
+          <td>${tx.merchant || '-'}</td>
+          <td>${tx.description || ''}</td>
+          <td>${tx.amount} ${tx.currency || ''}</td>
+          <td><span class="pill open-modal" data-tx="${tx.id}">${tx.category_name || tx.category || 'Uncategorized'}</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+      document.querySelectorAll('.open-modal').forEach(el => {
+        el.addEventListener('click', () => openModal(el.dataset.tx));
+      });
+    }
+
+    async function loadTransactions() {
+      const data = await fetchJson('/api/transactions');
+      window._transactions = data.transactions || [];
+      renderTransactions(window._transactions);
+    }
+
+    function openModal(txId) {
+      const tx = window._transactions.find(t => String(t.id) === String(txId));
+      if (!tx) return;
+      const modal = document.getElementById('modal');
+      modal.style.display = 'flex';
+      document.getElementById('modal-body').innerHTML = `
+        <div><strong>Merchant:</strong> ${tx.merchant || '-'}</div>
+        <div><strong>Description:</strong> ${tx.description || '-'}</div>
+        <div><strong>Amount:</strong> ${tx.amount} ${tx.currency || ''}</div>
+      `;
+      const select = document.getElementById('modal-category');
+      select.innerHTML = '<option value="">Select category</option>' + (window._categories || []).map(c => `<option value="${c.id}" ${tx.category_id === c.id ? 'selected' : ''}>${c.name}</option>`).join('') + '<option value="__new__">+ New category</option>';
+      select.onchange = () => {
+        const val = select.value;
+        document.getElementById('new-cat-wrap').style.display = val === '__new__' ? 'block' : 'none';
+        populateSubcategories(val);
+      };
+      select.onchange();
+      populateSubcategories(tx.category_id);
+      document.getElementById('use-merchant').checked = false;
+      document.getElementById('use-description').checked = false;
+      document.getElementById('reclassify-similar').checked = false;
+      document.getElementById('modal-save').onclick = () => saveModal(tx);
+    }
+
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+      document.getElementById('modal-status').textContent = '';
+    }
+
+    function populateSubcategories(categoryId) {
+      const select = document.getElementById('modal-subcategory');
+      if (!select) return;
+      const subs = (window._subcategories || []).filter(s => String(s.category_id) === String(categoryId));
+      select.innerHTML = '<option value="">(None)</option>' + subs.map(s => `<option value="${s.id}">${s.name}</option>`).join('') + '<option value="__new__">+ New subcategory</option>';
+      select.onchange = () => {
+        const val = select.value;
+        document.getElementById('new-sub-wrap').style.display = val === '__new__' ? 'block' : 'none';
+      };
+      select.onchange();
+    }
+
+    async function saveModal(tx) {
+      const status = document.getElementById('modal-status');
+      status.textContent = 'Saving...';
+      const catSelect = document.getElementById('modal-category');
+      let categoryId = catSelect.value;
+      if (categoryId === '__new__') {
+        const name = document.getElementById('new-cat-name').value.trim();
+        if (!name) {
+          status.textContent = 'Enter a category name';
+          return;
+        }
+        const catResp = await fetchJson('/api/categories', {method: 'POST', body: JSON.stringify({name})});
+        categoryId = catResp.id;
+        await loadCategories(); // refresh categories list
+      }
+      if (!categoryId) {
+        status.textContent = 'Select a category';
+        return;
+      }
+      const subSelect = document.getElementById('modal-subcategory');
+      let subcategoryId = subSelect ? subSelect.value : null;
+      if (subcategoryId === '__new__') {
+        const subName = document.getElementById('new-sub-name').value.trim();
+        if (!subName) {
+          status.textContent = 'Enter a subcategory name';
+          return;
+        }
+        const subResp = await fetchJson('/api/subcategories', {method: 'POST', body: JSON.stringify({name: subName, category_id: parseInt(categoryId, 10)})});
+        subcategoryId = subResp.id;
+        await loadCategories();
+      } else {
+        subcategoryId = subcategoryId ? parseInt(subcategoryId, 10) : null;
+      }
+      const createRuleMerchant = document.getElementById('use-merchant').checked;
+      const createRuleDesc = document.getElementById('use-description').checked;
+      const reclassify = document.getElementById('reclassify-similar').checked;
+
+      // Update transaction category
+      await fetchJson(`/api/transactions/${tx.id}`, {method: 'PATCH', body: JSON.stringify({category_id: parseInt(categoryId, 10), subcategory_id: subcategoryId})});
+
+      // Create rules if needed
+      if (createRuleMerchant || createRuleDesc) {
+        const rulePromises = [];
+        if (createRuleMerchant && tx.merchant) {
+          rulePromises.push(fetchJson('/api/rules', {method: 'POST', body: JSON.stringify({
+            name: tx.merchant,
+            merchant_pattern: tx.merchant,
+            description_pattern: null,
+            category_id: parseInt(categoryId, 10),
+            subcategory_id: subcategoryId,
+            fuzzy_threshold: 0.75,
+            priority: 100
+          })}));
+        }
+        if (createRuleDesc && tx.description) {
+          rulePromises.push(fetchJson('/api/rules', {method: 'POST', body: JSON.stringify({
+            name: tx.description.slice(0, 50),
+            merchant_pattern: null,
+            description_pattern: tx.description,
+            category_id: parseInt(categoryId, 10),
+            subcategory_id: subcategoryId,
+            fuzzy_threshold: 0.75,
+            priority: 100
+          })}));
+        }
+        await Promise.all(rulePromises);
+        if (reclassify) {
+          await fetchJson('/api/reclassify', {method: 'POST', body: JSON.stringify({user_id: 1})});
+        }
+      }
+
+      status.textContent = 'Saved';
+      await loadTransactions();
+      closeModal();
+    }
+
+    document.getElementById('close-modal').addEventListener('click', closeModal);
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target.id === 'modal') closeModal();
+    });
+
+    loadCategories().then(loadTransactions);
+  </script>
+</body>
+</html>

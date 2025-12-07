@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PocketBook Dashboard</title>
+  <style>
+    body { font-family: "Helvetica Neue", Arial, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
+    .summary { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; min-width: 200px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+    .transactions { width: 100%; border-collapse: collapse; }
+    .transactions th, .transactions td { padding: 10px; border-bottom: 1px solid #1f2937; text-align: left; }
+    .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; background: #1f2937; }
+    button { background: #2563eb; border: none; color: white; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    nav a { color: #e2e8f0; text-decoration: none; padding: 6px 10px; border-radius: 8px; border:1px solid #1f2937; background:#0b1220; }
+  </style>
+</head>
+<body>
+  <div style="display:flex; align-items:center; gap:16px; margin-bottom:12px;">
+    <div style="font-size:22px; font-weight:700;">PocketBook</div>
+    <nav style="display:flex; gap:10px;">
+      <a href="/">Dashboard</a>
+      <a href="/categories">Categories</a>
+      <a href="/transactions">Transactions</a>
+      <a href="/accounts">Accounts</a>
+    </nav>
+  </div>
+  <p>Simple view of balances, transactions, and rule-based categories.</p>
+
+  <div class="summary">
+    <div class="card">
+      <div style="font-size:12px; text-transform:uppercase; color:#94a3b8;">Total Balance</div>
+      <div id="total-balance" style="font-size:24px; font-weight:700;">-</div>
+    </div>
+    <div class="card">
+      <div style="font-size:12px; text-transform:uppercase; color:#94a3b8;">Rules</div>
+      <div id="rule-count" style="font-size:24px; font-weight:700;">-</div>
+    </div>
+    <div class="card">
+      <div style="font-size:12px; text-transform:uppercase; color:#94a3b8;">Uncategorized</div>
+      <div id="uncat-count" style="font-size:24px; font-weight:700;">-</div>
+    </div>
+    <div class="card">
+      <div style="font-size:12px; text-transform:uppercase; color:#94a3b8;">Actions</div>
+      <button id="sync-btn">Sync accounts</button>
+    </div>
+  </div>
+
+  <div class="summary" style="margin-top:12px;">
+    <div class="card" style="flex:1;">
+      <div style="font-size:14px; font-weight:600; margin-bottom:6px;">Spend by category</div>
+      <canvas id="pie-spend"></canvas>
+    </div>
+    <div class="card" style="flex:1;">
+      <div style="font-size:14px; font-weight:600; margin-bottom:6px;">Budget vs spend</div>
+      <canvas id="bar-budgets"></canvas>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/static/dashboard_charts.js"></script>
+  <script>
+    async function fetchJson(url, options={}) {
+      const res = await fetch(url, {headers: {"Content-Type": "application/json"}, ...options});
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+
+    async function loadRules() {
+      const data = await fetchJson('/api/rules');
+      document.getElementById('rule-count').innerText = data.length;
+    }
+
+    async function loadCategories() {
+      const data = await fetchJson('/api/categories');
+      window._categories = data;
+    }
+
+    async function sync() {
+      const btn = document.getElementById('sync-btn');
+      btn.disabled = true;
+      btn.innerText = 'Syncing...';
+      try {
+        await fetchJson('/api/sync', {method: 'POST', body: JSON.stringify({user_id: 1})});
+        await loadTransactions();
+      } catch (err) {
+        alert('Sync failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Sync accounts';
+      }
+    }
+
+    document.getElementById('sync-btn').addEventListener('click', sync);
+
+    loadCategories().then(() => {
+      loadRules();
+      loadSummaryAndRender();
+    });
+  </script>
+</body>
+</html>

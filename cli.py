@@ -38,6 +38,3 @@ def main():
 if __name__ == "__main__":
     # calling the main function
     main()
-
-accounts = list_accounts()
-print(get_balances_and_transactions(accounts))

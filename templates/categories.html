@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PocketBook Categories</title>
+  <style>
+    body { font-family: "Helvetica Neue", Arial, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); margin-bottom: 16px; }
+    nav a { color: #e2e8f0; text-decoration: none; padding: 6px 10px; border-radius: 8px; border:1px solid #1f2937; background:#0b1220; }
+    button { background: #2563eb; border: none; color: white; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .cat-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #1f2937;}
+  </style>
+</head>
+<body>
+  <div style="display:flex; align-items:center; gap:16px; margin-bottom:12px;">
+    <div style="font-size:22px; font-weight:700;">PocketBook</div>
+    <nav style="display:flex; gap:10px;">
+      <a href="/">Dashboard</a>
+      <a href="/categories">Categories</a>
+      <a href="/transactions">Transactions</a>
+      <a href="/accounts">Accounts</a>
+    </nav>
+  </div>
+  <h2>Manage categories</h2>
+
+  <div class="card">
+    <div style="font-size:14px; font-weight:600; margin-bottom:6px;">Create / Edit category</div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+      <input id="cat-name" placeholder="Name" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;" />
+      <input id="cat-color" placeholder="Color (hex optional)" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;" />
+      <input id="cat-budget" placeholder="Budget amount" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0; width:140px;" />
+      <button id="save-cat-btn">Save category</button>
+    </div>
+    <div id="categories-list"></div>
+  </div>
+
+  <div id="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; z-index:50;">
+    <div style="background:#0f172a; border:1px solid #1f2937; border-radius:12px; padding:20px; width:520px; color:#e2e8f0; box-shadow:0 10px 40px rgba(0,0,0,0.45); max-height:80vh; overflow:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div id="modal-title" style="font-size:18px; font-weight:700;"></div>
+        <button id="close-modal" style="background:#1f2937; padding:6px 10px;">X</button>
+      </div>
+      <div id="modal-body" style="font-size:14px;"></div>
+      <div id="modal-status" style="font-size:12px; color:#cbd5e1; margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <script>
+    async function fetchJson(url, options={}) {
+      const res = await fetch(url, {headers: {"Content-Type": "application/json"}, ...options});
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+
+    let _categories = [];
+    let _rules = [];
+    let _subcategories = [];
+    let _modalCatId = null;
+    let _modalMode = null; // 'rules' or 'subs'
+
+    async function loadCategories() {
+      _categories = await fetchJson('/api/categories');
+      _rules = await fetchJson('/api/rules');
+      _subcategories = await fetchJson('/api/subcategories');
+      renderCategories(_categories, _rules, _subcategories);
+    }
+
+    function rulesForCategory(catId) {
+      return _rules.filter(r => r.category_id === catId);
+    }
+
+    function subsForCategory(catId) {
+      return _subcategories.filter(s => s.category_id === catId);
+    }
+
+    function renderCategories(cats, rules, subs) {
+      const container = document.getElementById('categories-list');
+      container.innerHTML = '';
+      if (!cats.length) {
+        container.innerHTML = '<div style="color:#94a3b8;">No categories yet.</div>';
+        return;
+      }
+      cats.forEach(cat => {
+        const div = document.createElement('div');
+        div.className = 'cat-row';
+        div.innerHTML = `
+          <div>
+            <div style="font-weight:600;">${cat.name}</div>
+            <div style="font-size:12px; color:#94a3b8;">Color: ${cat.color || 'default'} | Budget: ${cat.budget || 0}</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button data-id="${cat.id}" class="open-rules">Rules</button>
+            <button data-id="${cat.id}" class="open-subs">Subcategories</button>
+            <button data-id="${cat.id}" class="edit-cat">Edit</button>
+            <button data-id="${cat.id}" class="delete-cat">Delete</button>
+          </div>
+        `;
+        div.querySelector('.delete-cat').addEventListener('click', () => deleteCategory(cat.id));
+        div.querySelector('.edit-cat').addEventListener('click', () => fillCatForm(cat));
+        div.querySelector('.open-rules').addEventListener('click', () => openRulesModal(cat));
+        div.querySelector('.open-subs').addEventListener('click', () => openSubsModal(cat));
+        container.appendChild(div);
+      });
+    }
+
+    function renderRulesSection(categoryId) {
+      const rules = rulesForCategory(categoryId);
+      const list = rules.length
+        ? rules.map(r => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #1f2937;">
+              <div>
+                <div style="font-weight:600;">${r.name || '(no name)'}</div>
+                <div style="font-size:12px; color:#94a3b8;">Merchant: ${r.merchant_pattern || '-'} | Desc: ${r.description_pattern || '-'}</div>
+              </div>
+              <button class="delete-rule" data-id="${r.id}" data-cat="${categoryId}">Delete</button>
+            </div>
+          `).join('')
+        : '<div style="color:#94a3b8;">No rules for this category.</div>';
+
+      return `
+        <div style="margin-top:4px; padding:8px; border:1px solid #1f2937; border-radius:8px; background:#0b1220;">
+          ${list}
+          <div style="margin-top:10px;">
+            <div style="font-size:12px; color:#94a3b8; margin-bottom:4px;">Add a rule (matches if merchant or description contains/fuzzy-matches)</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+              <input data-cat-merchant="${categoryId}" placeholder="Merchant pattern" style="padding:6px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;" />
+              <input data-cat-desc="${categoryId}" placeholder="Description pattern" style="padding:6px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;" />
+              <button class="add-rule" data-cat="${categoryId}">Add rule</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSubsSection(categoryId) {
+      const subs = subsForCategory(categoryId);
+      const list = subs.length
+        ? subs.map(s => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #1f2937;">
+              <div>
+                <div style="font-weight:600;">${s.name}</div>
+                <div style="font-size:12px; color:#94a3b8;">Budget: ${s.budget || 0}</div>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button class="edit-sub" data-id="${s.id}" data-cat="${categoryId}">Edit</button>
+                <button class="delete-sub" data-id="${s.id}" data-cat="${categoryId}">Delete</button>
+              </div>
+            </div>
+          `).join('')
+        : '<div style="color:#94a3b8;">No subcategories for this category.</div>';
+
+      return `
+        <div style="margin-top:4px; padding:8px; border:1px solid #1f2937; border-radius:8px; background:#0b1220;">
+          ${list}
+          <div style="margin-top:10px;">
+            <div style="font-size:12px; color:#94a3b8; margin-bottom:4px;">Add a subcategory</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+              <input data-sub-name="${categoryId}" placeholder="Subcategory name" style="padding:6px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;" />
+              <input data-sub-budget="${categoryId}" placeholder="Budget" style="padding:6px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0; width:100px;" />
+              <button class="add-sub" data-cat="${categoryId}">Add subcategory</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function fillCatForm(cat) {
+      document.getElementById('cat-name').value = cat.name || '';
+      document.getElementById('cat-color').value = cat.color || '';
+      document.getElementById('save-cat-btn').dataset.editing = cat.id;
+      document.getElementById('cat-budget').value = cat.budget || 0;
+    }
+
+    async function saveCategory() {
+      const payload = {
+        name: document.getElementById('cat-name').value,
+        color: document.getElementById('cat-color').value || null,
+        budget: parseFloat(document.getElementById('cat-budget').value || '0'),
+      };
+      if (!payload.name) {
+        alert('Name required');
+        return;
+      }
+      const editingId = document.getElementById('save-cat-btn').dataset.editing;
+      if (editingId) {
+        await fetchJson(`/api/categories/${editingId}`, {method: 'PUT', body: JSON.stringify(payload)});
+      } else {
+        await fetchJson('/api/categories', {method: 'POST', body: JSON.stringify(payload)});
+      }
+      document.getElementById('save-cat-btn').dataset.editing = '';
+      await loadCategories();
+      refreshModalIfOpen();
+    }
+
+    async function deleteCategory(id) {
+      await fetchJson(`/api/categories/${id}`, {method: 'DELETE'});
+      await loadCategories();
+      refreshModalIfOpen();
+    }
+
+    async function addSubcategory(catId) {
+      const name = document.querySelector(`input[data-sub-name="${catId}"]`).value;
+      const budget = parseFloat(document.querySelector(`input[data-sub-budget="${catId}"]`).value || '0');
+      if (!name) {
+        alert('Subcategory name required');
+        return;
+      }
+      await fetchJson('/api/subcategories', {method: 'POST', body: JSON.stringify({category_id: catId, name, budget})});
+      await loadCategories();
+      refreshModalIfOpen();
+    }
+
+    async function deleteSubcategory(id) {
+      await fetchJson(`/api/subcategories/${id}`, {method: 'DELETE'});
+      await loadCategories();
+      refreshModalIfOpen();
+    }
+
+    async function editSubcategory(id) {
+      const sub = _subcategories.find(s => s.id === id);
+      if (!sub) return;
+      const name = prompt('Subcategory name', sub.name);
+      if (!name) return;
+      const budget = parseFloat(prompt('Budget', sub.budget || 0) || '0');
+      await fetchJson(`/api/subcategories/${id}`, {method: 'PUT', body: JSON.stringify({name, budget})});
+      await loadCategories();
+      refreshModalIfOpen();
+    }
+
+    async function addRuleForCategory(catId) {
+      const merchant = document.querySelector(`input[data-cat-merchant="${catId}"]`).value;
+      const desc = document.querySelector(`input[data-cat-desc="${catId}"]`).value;
+      if (!merchant && !desc) {
+        alert('Add a merchant or description pattern');
+        return;
+      }
+      const payload = {
+        name: merchant || desc || 'rule',
+        merchant_pattern: merchant,
+        description_pattern: desc,
+        category_id: catId,
+        fuzzy_threshold: 0.75,
+        priority: 100
+      };
+      await fetchJson('/api/rules', {method: 'POST', body: JSON.stringify(payload)});
+      await loadCategories();
+      refreshModalIfOpen();
+    }
+
+    async function deleteRule(id) {
+      await fetchJson(`/api/rules/${id}`, {method: 'DELETE'});
+      await loadCategories();
+      refreshModalIfOpen();
+    }
+
+    document.getElementById('save-cat-btn').addEventListener('click', saveCategory);
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('add-rule')) {
+        const catId = parseInt(e.target.dataset.cat, 10);
+        addRuleForCategory(catId);
+      }
+      if (e.target.classList.contains('delete-rule')) {
+        const rid = parseInt(e.target.dataset.id, 10);
+        deleteRule(rid);
+      }
+      if (e.target.classList.contains('add-sub')) {
+        const catId = parseInt(e.target.dataset.cat, 10);
+        addSubcategory(catId);
+      }
+      if (e.target.classList.contains('delete-sub')) {
+        const sid = parseInt(e.target.dataset.id, 10);
+        deleteSubcategory(sid);
+      }
+      if (e.target.classList.contains('edit-sub')) {
+        const sid = parseInt(e.target.dataset.id, 10);
+        editSubcategory(sid);
+      }
+    });
+
+    loadCategories();
+
+    // Modal helpers
+    function openRulesModal(cat) {
+      _modalCatId = cat.id;
+      _modalMode = 'rules';
+      document.getElementById('modal-title').textContent = `Rules for ${cat.name}`;
+      document.getElementById('modal-body').innerHTML = renderRulesSection(cat.id);
+      document.getElementById('modal-status').textContent = '';
+      showModal();
+    }
+
+    function openSubsModal(cat) {
+      _modalCatId = cat.id;
+      _modalMode = 'subs';
+      document.getElementById('modal-title').textContent = `Subcategories for ${cat.name}`;
+      document.getElementById('modal-body').innerHTML = renderSubsSection(cat.id);
+      document.getElementById('modal-status').textContent = '';
+      showModal();
+    }
+
+    function showModal() {
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+      _modalCatId = null;
+      _modalMode = null;
+    }
+
+    function refreshModalIfOpen() {
+      if (!_modalCatId) return;
+      const cat = _categories.find(c => c.id === _modalCatId);
+      if (!cat) return;
+      if (_modalMode === 'rules') {
+        openRulesModal(cat);
+      } else if (_modalMode === 'subs') {
+        openSubsModal(cat);
+      }
+    }
+
+    document.getElementById('close-modal').addEventListener('click', closeModal);
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target.id === 'modal') closeModal();
+    });
+  </script>
+</body>
+</html>
