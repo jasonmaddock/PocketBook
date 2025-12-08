@@ -354,7 +354,7 @@ class TransactionsConnection(Db):
         )
         return self.cursor.fetchall()
 
-    def update_category(self, tx_id: int, category_id: int, rule_id: Optional[int] = None, subcategory_id: Optional[int] = None):
+    def update_category(self, tx_id: int, category_id: Optional[int] = None, rule_id: Optional[int] = None, subcategory_id: Optional[int] = None):
         self.cursor.execute(
             "UPDATE transactions SET category_id = ?, subcategory_id = ?, rule_id = ? WHERE id = ?",
             (category_id, subcategory_id, rule_id, tx_id),

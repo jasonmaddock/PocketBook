@@ -131,12 +131,14 @@ def transactions():
 def update_transaction_category(tx_id: int):
     payload = request.json or {}
     category_id = payload.get("category_id")
+    subcategory_id = payload.get("subcategory_id")
     if not category_id:
         return jsonify({"error": "category_id required"}), 400
     rule_id = payload.get("rule_id")
     tc = TransactionsConnection()
-    tc.update_category(tx_id, int(category_id), rule_id)
-    return jsonify({"id": tx_id, "category_id": category_id, "rule_id": rule_id})
+    breakpoint()
+    tc.update_category(tx_id=tx_id, category_id=int(category_id), subcategory_id=int(subcategory_id), rule_id=rule_id)
+    return jsonify({"id": tx_id, "category_id": category_id, "subcategory_id": subcategory_id, "rule_id": rule_id})
 
 
 @app.get("/api/categories")
@@ -248,9 +250,12 @@ def reclassify_transactions():
                 tx["raw"] = json.loads(raw)
             except Exception:
                 tx["raw"] = {}
-        category_id, category_name, rule_id, _score = classify_transaction(tx, rules, default_category_id)
+        category_id, category_name, sub_cat_id, sub_cat_name, rule_id, _score = classify_transaction(tx, rules, default_category_id)
         if category_id and category_id != tx.get("category_id"):
-            tc.update_category(tx["id"], category_id, rule_id)
+            tc.update_category(tx["id"], category_id=category_id, rule_id=rule_id)
+            updated += 1
+        if sub_cat_id and sub_cat_id != tx.get("subcategory_id"):
+            tc.update_category(tx["id"], subcategory_id=category_id, rule_id=rule_id)
             updated += 1
 
     return jsonify({"updated": updated})
