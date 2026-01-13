@@ -13,6 +13,8 @@
     button { background: #2563eb; border: none; color: white; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
     nav a { color: #e2e8f0; text-decoration: none; padding: 6px 10px; border-radius: 8px; border:1px solid #1f2937; background:#0b1220; }
+    .range-btn { background:#1f2937; border:1px solid #1f2937; color:#e2e8f0; }
+    .range-btn.active { background:#2563eb; border-color:#2563eb; }
   </style>
 </head>
 <body>
@@ -30,7 +32,7 @@
   <div class="summary">
     <div class="card">
       <div style="font-size:12px; text-transform:uppercase; color:#94a3b8;">Total Balance</div>
-      <div id="total-balance" style="font-size:24px; font-weight:700;">-</div>
+      <div id="total-balance" style="font-size:24px; font-weight:700;">£-</div>
     </div>
     <div class="card">
       <div style="font-size:12px; text-transform:uppercase; color:#94a3b8;">Rules</div>
@@ -45,6 +47,12 @@
       <button id="sync-btn">Sync accounts</button>
     </div>
   </div>
+  <div style="display:flex; gap:8px; margin-bottom:12px;">
+    <button class="range-btn" data-days="30">Last 30 days</button>
+    <button class="range-btn" data-days="90">Last 90 days</button>
+    <button class="range-btn" data-days="180">Last 6 months</button>
+    <button class="range-btn" data-days="365">Last 1 year</button>
+  </div>
 
   <div class="summary" style="margin-top:12px;">
     <div class="card" style="flex:1;">
@@ -57,9 +65,14 @@
     </div>
   </div>
 
+  <div id="subcategory-pies" class="summary" style="margin-top:12px; flex-wrap:wrap;"></div>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="/static/dashboard_charts.js"></script>
   <script>
+    let summaryParams = "";
+    let activeRangeBtn = null;
+
     async function fetchJson(url, options={}) {
       const res = await fetch(url, {headers: {"Content-Type": "application/json"}, ...options});
       if (!res.ok) throw new Error(await res.text());
@@ -82,7 +95,7 @@
       btn.innerText = 'Syncing...';
       try {
         await fetchJson('/api/sync', {method: 'POST', body: JSON.stringify({user_id: 1})});
-        await loadTransactions();
+        await loadSummaryAndRender(summaryParams);
       } catch (err) {
         alert('Sync failed: ' + err.message);
       } finally {
@@ -93,9 +106,26 @@
 
     document.getElementById('sync-btn').addEventListener('click', sync);
 
+    function setRange(days, btn) {
+      const to = new Date();
+      const from = new Date();
+      from.setDate(to.getDate() - days);
+      const fmt = (d) => d.toISOString().slice(0,10);
+      summaryParams = `?from=${fmt(from)}&to=${fmt(to)}`;
+      if (activeRangeBtn) activeRangeBtn.classList.remove('active');
+      if (btn) { btn.classList.add('active'); activeRangeBtn = btn; }
+      loadSummaryAndRender(summaryParams);
+    }
+
+    document.querySelectorAll('.range-btn').forEach(btn => {
+      btn.addEventListener('click', () => setRange(parseInt(btn.dataset.days, 10), btn));
+    });
+
     loadCategories().then(() => {
       loadRules();
-      loadSummaryAndRender();
+      // default to 30 days
+      const defaultBtn = document.querySelector('.range-btn[data-days="30"]');
+      setRange(30, defaultBtn);
     });
   </script>
 </body>

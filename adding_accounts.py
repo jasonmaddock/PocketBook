@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Dict, List
+import requests
 
 from db import (
     TokensConnection,
@@ -48,12 +49,12 @@ def create_requisition(bank_id, user_id=1):
     return add_account(bank_id, user_id=user_id, prompt=False)
 
 
-def list_accounts(user_id=1):
+def list_accounts(user_id=1, include_pending: bool = False):
     con = TokensConnection()
     acc = AccountsConnection()
     access_token = con.access_token
     account_list = []
-    accounts = acc.retrieve_accounts(user_id)
+    accounts = acc.retrieve_accounts(user_id, include_pending=include_pending)
     for account in accounts:
         api_account = ApiConnection.retrieve_accounts(account["req_id"], access_token)
         api_account["req_id"] = account["req_id"]
@@ -91,24 +92,38 @@ def get_balances_and_transactions(account_list, user_id=1):
     default_category_id = cat_con.default_category_id
 
     balances_and_transactions = {}
+    errors: List[dict] = []
     for account in account_list:
         for account_id in account["accounts"]:
-            acc.upsert_provider_account(account["req_id"], account_id)
-            b_n_t = ApiConnection.get_balance_and_transactions(account_id, access_token)
-            balance_amount = float(b_n_t["balances"][0]["balanceAmount"]["amount"])
-            acc.add_balance(account_id, balance_amount)
+            try:
+                acc.upsert_provider_account(account["req_id"], account_id)
+                acc.activate_account(account["req_id"], account_id)
+                b_n_t = ApiConnection.get_balance_and_transactions(account_id, access_token)
+                balance_amount = float(b_n_t["balances"][0]["balanceAmount"]["amount"])
+                acc.add_balance(account_id, balance_amount)
 
-            booked = b_n_t["transactions"].get("booked", [])
-            pending = b_n_t["transactions"].get("pending", [])
-            normalized = [_normalize_transaction(t) for t in booked + pending]
-            classified = apply_rules(normalized, rules, default_category_id)
-            tra.add_transactions(account_id, user_id, classified)
+                booked = b_n_t["transactions"].get("booked", [])
+                pending = b_n_t["transactions"].get("pending", [])
+                normalized = [_normalize_transaction(t) for t in booked + pending]
+                classified = apply_rules(normalized, rules, default_category_id)
+                tra.add_transactions(account_id, user_id, classified)
 
-            balances_and_transactions[account_id] = {
-                "balance": balance_amount,
-                "transactions": classified,
-            }
-    return balances_and_transactions
+                balances_and_transactions[account_id] = {
+                    "balance": balance_amount,
+                    "transactions": classified,
+                }
+            except requests.exceptions.HTTPError as err:
+                status = getattr(err.response, "status_code", None)
+                errors.append(
+                    {"account_id": account_id, "req_id": account.get("req_id"), "status": status, "error": str(err)}
+                )
+                continue
+            except Exception as exc:
+                errors.append(
+                    {"account_id": account_id, "req_id": account.get("req_id"), "status": None, "error": str(exc)}
+                )
+                continue
+    return {"accounts": balances_and_transactions, "errors": errors}
 
 
 if __name__ == "__main__":

@@ -34,10 +34,3 @@ def tokens_connection(test_db):
             self.cursor = self.con.cursor()
     
     return TestTokensConnection()
-
-
-
-
-def test_test():
-    assert 1 == 1
-

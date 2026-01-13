@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS accounts(
     eua_id TEXT,
     req_id TEXT,
     provider_account_id TEXT,
+    status TEXT DEFAULT 'pending',
     valid_til TEXT,
     balance REAL,
     balance_dt TEXT
@@ -97,6 +98,12 @@ class Db:
         for ddl in (TOKENS_TABLE, ACCOUNTS_TABLE, TRANSACTIONS_TABLE, CATEGORIES_TABLE, SUBCATEGORIES_TABLE, RULES_TABLE):
             self.cursor.execute(ddl)
         self.con.commit()
+        # add status column to accounts if missing (legacy DBs)
+        self.cursor.execute("PRAGMA table_info(accounts)")
+        cols = [row["name"] for row in self.cursor.fetchall()]
+        if "status" not in cols:
+            self.cursor.execute("ALTER TABLE accounts ADD COLUMN status TEXT DEFAULT 'pending'")
+            self.con.commit()
         self._ensure_default_category()
 
     def _ensure_default_category(self):
@@ -159,18 +166,25 @@ class AccountsConnection(Db):
         req_id: str,
         valid_til: str,
         provider_account_id: str = None,
+        status: str = "pending",
     ):
         self.cursor.execute(
             """
-            INSERT INTO accounts (user_id, bank_id, eua_id, req_id, provider_account_id, valid_til)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO accounts (user_id, bank_id, eua_id, req_id, provider_account_id, status, valid_til)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, bank_id, eua_id, req_id, provider_account_id, valid_til),
+            (user_id, bank_id, eua_id, req_id, provider_account_id, status, valid_til),
         )
         self.con.commit()
 
-    def retrieve_accounts(self, user_id: int):
-        self.cursor.execute("SELECT * FROM accounts WHERE user_id = ?", (user_id,))
+    def retrieve_accounts(self, user_id: int, include_pending: bool = False):
+        if include_pending:
+            self.cursor.execute("SELECT * FROM accounts WHERE user_id = ?", (user_id,))
+        else:
+            self.cursor.execute(
+                "SELECT * FROM accounts WHERE user_id = ? AND (status = 'active' OR status IS NULL)",
+                (user_id,),
+            )
         return self.cursor.fetchall()
     
     def add_balance(self, provider_account_id: str, balance: float):
@@ -186,6 +200,19 @@ class AccountsConnection(Db):
             "UPDATE accounts SET provider_account_id = ? WHERE req_id = ?",
             (provider_account_id, req_id),
         )
+        self.con.commit()
+
+    def activate_account(self, req_id: str, provider_account_id: str):
+        self.cursor.execute(
+            "UPDATE accounts SET provider_account_id = ?, status = 'active' WHERE req_id = ?",
+            (provider_account_id, req_id),
+        )
+        self.con.commit()
+
+    def delete_account(self, account_id: int):
+        # remove transactions for the account then the account row
+        self.cursor.execute("DELETE FROM transactions WHERE account_id = ?", (account_id,))
+        self.cursor.execute("DELETE FROM accounts WHERE account_id = ?", (account_id,))
         self.con.commit()
 
 
@@ -339,18 +366,27 @@ class TransactionsConnection(Db):
         )
         self.con.commit()
 
-    def list_transactions(self, user_id: int):
+    def list_transactions(self, user_id: int, from_dt: str = None, to_dt: str = None):
+        clauses = ["transactions.user_id = ?"]
+        params = [user_id]
+        if from_dt:
+            clauses.append("transactions.date >= ?")
+            params.append(from_dt)
+        if to_dt:
+            clauses.append("transactions.date <= ?")
+            params.append(to_dt)
+        where_clause = " AND ".join(clauses)
         self.cursor.execute(
-            """
+            f"""
             SELECT transactions.*, categories.name AS category_name, categories.color AS category_color,
                    subcategories.name AS subcategory_name
             FROM transactions
             LEFT JOIN categories ON categories.id = transactions.category_id
             LEFT JOIN subcategories ON subcategories.id = transactions.subcategory_id
-            WHERE transactions.user_id = ?
+            WHERE {where_clause}
             ORDER BY date DESC
             """,
-            (user_id,),
+            tuple(params),
         )
         return self.cursor.fetchall()
 

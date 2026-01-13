@@ -37,7 +37,7 @@
   <table id="acc-table">
     <thead>
       <tr>
-        <th>Bank</th><th>Req ID</th><th>Provider Account</th><th>Balance</th><th>Balance Dt</th>
+        <th>Bank</th><th>Req ID</th><th>Provider Account</th><th>Status</th><th>Balance</th><th>Balance Dt</th><th>Actions</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -60,9 +60,12 @@
           <td>${acc.bank_id || ''}</td>
           <td>${acc.req_id || ''}</td>
           <td>${acc.provider_account_id || ''}</td>
+          <td>${acc.status || 'active'}</td>
           <td>${acc.balance || ''}</td>
           <td>${acc.balance_dt || ''}</td>
+          <td><button data-del="${acc.account_id}">Delete</button></td>
         `;
+        tr.querySelector('button[data-del]').addEventListener('click', () => deleteAccount(acc.account_id));
         tbody.appendChild(tr);
       });
     }
@@ -106,9 +109,20 @@
         output.innerHTML = `
           <div>Requisition created.</div>
           <a href="${resp.link}" target="_blank" style="color:#93c5fd;">Open bank authorisation link</a>
+          <div style="margin-top:6px; color:#94a3b8; font-size:12px;">Once you've completed the bank flow, click Sync on the dashboard to activate the account. Pending links won't appear here until they finish.</div>
         `;
       } catch (err) {
         output.innerHTML = 'Failed to create requisition: ' + err.message;
+      }
+    }
+
+    async function deleteAccount(accountId) {
+      if (!accountId) return;
+      try {
+        await fetchJson(`/api/accounts/${accountId}`, {method: 'DELETE'});
+        await loadAccounts();
+      } catch (err) {
+        alert('Failed to delete account: ' + err.message);
       }
     }
 

@@ -42,6 +42,12 @@
       background: #1f2937;
     }
 
+    .sort-arrow {
+      font-size: 11px;
+      margin-left: 4px;
+      opacity: 0.6;
+    }
+
     nav a {
       color: #e2e8f0;
       text-decoration: none;
@@ -79,18 +85,51 @@
   </div>
   <h2>Transactions</h2>
 
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;">
+      <div>
+        <label style="font-size:12px; color:#94a3b8;">Category</label><br/>
+        <select id="filter-category" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0b1220; color:#e2e8f0; min-width:160px;">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px; color:#94a3b8;">From</label><br/>
+        <input type="date" id="filter-from" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0b1220; color:#e2e8f0;" />
+      </div>
+      <div>
+        <label style="font-size:12px; color:#94a3b8;">To</label><br/>
+        <input type="date" id="filter-to" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0b1220; color:#e2e8f0;" />
+      </div>
+      <div>
+        <label style="font-size:12px; color:#94a3b8;">Search</label><br/>
+        <input id="filter-search" placeholder="Merchant or description" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0b1220; color:#e2e8f0; min-width:240px;" />
+      </div>
+      <div>
+        <button id="filter-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
   <table class="transactions" id="tx-table">
     <thead>
       <tr>
-        <th>Date</th>
-        <th>Merchant</th>
-        <th>Description</th>
-        <th>Amount</th>
-        <th>Category</th>
+        <th class="sortable" data-sort="date">Date <span class="sort-arrow"></span></th>
+        <th class="sortable" data-sort="merchant">Merchant <span class="sort-arrow"></span></th>
+        <th class="sortable" data-sort="description">Description <span class="sort-arrow"></span></th>
+        <th class="sortable" data-sort="amount">Amount <span class="sort-arrow"></span></th>
+        <th class="sortable" data-sort="category">Category <span class="sort-arrow"></span></th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+    <div id="pagination-info" style="color:#94a3b8; font-size:12px;"></div>
+    <div style="display:flex; gap:8px;">
+      <button id="prev-page">Prev</button>
+      <button id="next-page">Next</button>
+    </div>
+  </div>
 
   <div id="modal"
     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; z-index:50;">
@@ -131,6 +170,10 @@
           <label><input type="checkbox" id="reclassify-similar" /> Reclassify similar transactions (runs rule(s) across
             all)</label>
         </div>
+        <div id="preview-section" style="display:none; border:1px solid #1f2937; border-radius:8px; padding:8px; max-height:200px; overflow:auto;">
+          <div style="font-weight:600; margin-bottom:6px;">Transactions to reclassify</div>
+          <div id="preview-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+        </div>
         <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
           <button id="modal-save" style="background:#2563eb;">Save</button>
         </div>
@@ -146,12 +189,58 @@
       return await res.json();
     }
 
+    let _rulesCache = null;
+    async function ensureRulesCache() {
+      if (_rulesCache) return _rulesCache;
+      _rulesCache = await fetchJson('/api/rules');
+      return _rulesCache;
+    }
+
+    function findExistingRuleLocal(merchant, desc) {
+      if (!_rulesCache) return null;
+      return _rulesCache.find(r =>
+        (merchant && r.merchant_pattern && r.merchant_pattern === merchant) ||
+        (desc && r.description_pattern && r.description_pattern === desc)
+      );
+    }
+
+    async function createRuleWithConflict(payload, statusEl, saveBtn) {
+      await ensureRulesCache();
+      const conflict = findExistingRuleLocal(payload.merchant_pattern, payload.description_pattern);
+      let finalPayload = { ...payload };
+      if (conflict) {
+        if (!saveBtn || saveBtn.dataset.confirmConflict !== 'true') {
+          if (statusEl) statusEl.textContent = `A rule already exists in category "${conflict.category_name || conflict.category_id}". Click Save again to replace it.`;
+          if (saveBtn) {
+            saveBtn.dataset.confirmConflict = 'true';
+            saveBtn.dataset.conflictPayload = JSON.stringify(payload);
+          }
+          return { requiresConfirm: true };
+        }
+        finalPayload = { ...payload, replace_existing: true };
+      }
+      const res = await fetch('/api/rules', { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify(finalPayload) });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      // refresh cache after change
+      _rulesCache = null;
+      await ensureRulesCache();
+      if (saveBtn) {
+        saveBtn.dataset.confirmConflict = 'false';
+        saveBtn.dataset.conflictPayload = '';
+      }
+      return data;
+    }
+
     async function loadCategories() {
       const data = await fetchJson('/api/categories');
       window._categories = data;
       window._subcategories = [];
+      const filterSelect = document.getElementById('filter-category');
+      filterSelect.innerHTML = '<option value="">All</option>';
       data.forEach(cat => {
         (cat.subcategories || []).forEach(sc => window._subcategories.push(sc));
+        filterSelect.innerHTML += `<option value="${cat.id}">${cat.name}</option>`;
       });
     }
 
@@ -164,8 +253,11 @@
           <td>${tx.date || ''}</td>
           <td>${tx.merchant || '-'}</td>
           <td>${tx.description || ''}</td>
-          <td>${tx.amount} ${tx.currency || ''}</td>
-          <td><span class="pill open-modal" data-tx="${tx.id}">${tx.category_name || tx.category || 'Uncategorized'}</span></td>
+          <td>${Number(tx.amount || 0) < 0 ? '-' : ''}£${Math.abs(Number(tx.amount || 0)).toFixed(2)}</td>
+          <td>
+            <span class="pill open-modal" data-tx="${tx.id}" style="background:${tx.category_color || '#1f2937'};">${tx.category_name || tx.category || 'Uncategorized'}</span>
+            ${tx.subcategory_name ? `<span class="pill open-modal" data-tx="${tx.id}" style="margin-left:6px; background:#1d4ed8;">${tx.subcategory_name}</span>` : ''}
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -175,9 +267,83 @@
     }
 
     async function loadTransactions() {
-      const data = await fetchJson('/api/transactions');
+      const qs = buildFilterQuery();
+      const data = await fetchJson('/api/transactions' + qs);
       window._transactions = data.transactions || [];
-      renderTransactions(window._transactions);
+      applyFilters();
+    }
+
+    function buildFilterQuery() {
+      const from = document.getElementById('filter-from').value;
+      const to = document.getElementById('filter-to').value;
+      const params = new URLSearchParams();
+      if (from) params.append('from', from);
+      if (to) params.append('to', to);
+      return params.toString() ? `?${params.toString()}` : '';
+    }
+
+    let currentPage = 1;
+    const pageSize = 25;
+    let sortKey = 'date';
+    let sortDir = 'desc';
+
+    function updateSortIndicators() {
+      document.querySelectorAll('th.sortable').forEach(th => {
+        const arrow = th.querySelector('.sort-arrow');
+        if (!arrow) return;
+        if (th.dataset.sort === sortKey) {
+          arrow.textContent = sortDir === 'asc' ? '▲' : '▼';
+          arrow.style.opacity = '1';
+        } else {
+          arrow.textContent = '';
+          arrow.style.opacity = '0.3';
+        }
+      });
+    }
+
+    function applyFilters() {
+      const categoryFilter = document.getElementById('filter-category').value;
+      const from = document.getElementById('filter-from').value;
+      const to = document.getElementById('filter-to').value;
+      const search = (document.getElementById('filter-search').value || '').toLowerCase();
+      let filtered = [...(window._transactions || [])];
+      if (categoryFilter) {
+        filtered = filtered.filter(tx => String(tx.category_id) === categoryFilter);
+      }
+      if (from) {
+        filtered = filtered.filter(tx => tx.date && tx.date >= from);
+      }
+      if (to) {
+        filtered = filtered.filter(tx => tx.date && tx.date <= to);
+      }
+      if (search) {
+        filtered = filtered.filter(tx =>
+          (tx.merchant || '').toLowerCase().includes(search) ||
+          (tx.description || '').toLowerCase().includes(search)
+        );
+      }
+      // sort
+      filtered.sort((a, b) => {
+        const dir = sortDir === 'asc' ? 1 : -1;
+        switch (sortKey) {
+          case 'date': return dir * (a.date || '').localeCompare(b.date || '');
+          case 'amount': return dir * (Number(a.amount || 0) - Number(b.amount || 0));
+          case 'merchant': return dir * (a.merchant || '').localeCompare(b.merchant || '');
+          case 'description': return dir * (a.description || '').localeCompare(b.description || '');
+          case 'category': return dir * (a.category_name || '').localeCompare(b.category_name || '');
+          default: return 0;
+        }
+      });
+      const total = filtered.length;
+      const start = (currentPage - 1) * pageSize;
+      const pageItems = filtered.slice(start, start + pageSize);
+      if (total === 0) {
+        document.getElementById('pagination-info').textContent = 'Showing 0 of 0';
+      } else {
+        document.getElementById('pagination-info').textContent = `Showing ${Math.min(total, start + 1)}-${Math.min(total, start + pageSize)} of ${total}`;
+      }
+      updateSortIndicators();
+      renderTransactions(pageItems);
     }
 
     function openModal(txId) {
@@ -188,38 +354,89 @@
       document.getElementById('modal-body').innerHTML = `
         <div><strong>Merchant:</strong> ${tx.merchant || '-'}</div>
         <div><strong>Description:</strong> ${tx.description || '-'}</div>
-        <div><strong>Amount:</strong> ${tx.amount} ${tx.currency || ''}</div>
+        <div><strong>Amount:</strong> ${Number(tx.amount || 0) < 0 ? '-' : ''}£${Math.abs(Number(tx.amount || 0)).toFixed(2)}</div>
       `;
       const select = document.getElementById('modal-category');
-      select.innerHTML = '<option value="">Select category</option>' + (window._categories || []).map(c => `<option value="${c.id}" ${tx.category_id === c.id ? 'selected' : ''}>${c.name}</option>`).join('') + '<option value="__new__">+ New category</option>';
+      select.innerHTML = '<option value="">Select category</option>' + (window._categories || []).map(c => `<option value="${c.id}" ${String(tx.category_id) === String(c.id) ? 'selected' : ''}>${c.name}</option>`).join('') + '<option value="__new__">+ New category</option>';
       select.onchange = () => {
         const val = select.value;
         document.getElementById('new-cat-wrap').style.display = val === '__new__' ? 'block' : 'none';
-        populateSubcategories(val);
+        populateSubcategories(val, null);
       };
       select.onchange();
-      populateSubcategories(tx.category_id);
+      populateSubcategories(tx.category_id, tx.subcategory_id);
       document.getElementById('use-merchant').checked = false;
       document.getElementById('use-description').checked = false;
       document.getElementById('reclassify-similar').checked = false;
       document.getElementById('modal-save').onclick = () => saveModal(tx);
+      document.getElementById('modal-save').dataset.confirming = 'false';
+      document.getElementById('modal-save').dataset.confirmConflict = 'false';
+      document.getElementById('modal-save').dataset.conflictPayload = '';
+      document.getElementById('preview-section').style.display = 'none';
+      document.getElementById('preview-list').innerHTML = '';
+      document.getElementById('modal-status').textContent = '';
     }
 
     function closeModal() {
       document.getElementById('modal').style.display = 'none';
       document.getElementById('modal-status').textContent = '';
+      document.getElementById('modal-save').dataset.confirming = 'false';
+      document.getElementById('modal-save').dataset.confirmConflict = 'false';
+      document.getElementById('modal-save').dataset.conflictPayload = '';
+      document.getElementById('preview-section').style.display = 'none';
+      document.getElementById('preview-list').innerHTML = '';
     }
 
-    function populateSubcategories(categoryId) {
+    function populateSubcategories(categoryId, selectedId = null) {
       const select = document.getElementById('modal-subcategory');
       if (!select) return;
       const subs = (window._subcategories || []).filter(s => String(s.category_id) === String(categoryId));
-      select.innerHTML = '<option value="">(None)</option>' + subs.map(s => `<option value="${s.id}">${s.name}</option>`).join('') + '<option value="__new__">+ New subcategory</option>';
+      select.innerHTML = '<option value="">(None)</option>' + subs.map(s => `<option value="${s.id}" ${String(selectedId) === String(s.id) ? 'selected' : ''}>${s.name}</option>`).join('') + '<option value="__new__">+ New subcategory</option>';
       select.onchange = () => {
         const val = select.value;
         document.getElementById('new-sub-wrap').style.display = val === '__new__' ? 'block' : 'none';
       };
       select.onchange();
+    }
+
+    async function buildPreviewList(rulePatterns) {
+      const previewSection = document.getElementById('preview-section');
+      const previewList = document.getElementById('preview-list');
+      previewList.innerHTML = 'Loading...';
+      previewSection.style.display = 'block';
+      const data = await fetchJson('/api/transactions');
+      const allTx = data.transactions || [];
+      const matches = [];
+      allTx.forEach(t => {
+        const merchant = (t.merchant || '').toLowerCase();
+        const desc = (t.description || '').toLowerCase();
+        const hit = rulePatterns.some(p => {
+          if (p.type === 'merchant') return merchant.includes(p.value.toLowerCase());
+          if (p.type === 'description') return desc.includes(p.value.toLowerCase());
+          return false;
+        });
+        if (hit) matches.push(t);
+      });
+      if (!matches.length) {
+        previewList.innerHTML = '<div style="color:#94a3b8;">No similar transactions found.</div>';
+        return matches;
+      }
+      previewList.innerHTML = '';
+      matches.forEach(t => {
+        const row = document.createElement('label');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '8px';
+        row.innerHTML = `
+          <input type="checkbox" class="preview-check" value="${t.id}" checked />
+          <span style="font-weight:600;">${t.merchant || '-'}</span>
+          <span style="color:#94a3b8;">${t.description || ''}</span>
+          <span style="margin-left:auto;">${Number(t.amount || 0) < 0 ? '-' : ''}£${Math.abs(Number(t.amount || 0)).toFixed(2)}</span>
+        `;
+        previewList.appendChild(row);
+      });
+      previewSection.style.display = 'block';
+      return matches;
     }
 
     async function saveModal(tx) {
@@ -259,40 +476,63 @@
       const createRuleDesc = document.getElementById('use-description').checked;
       const reclassify = document.getElementById('reclassify-similar').checked;
 
+      const saveBtn = document.getElementById('modal-save');
+      saveBtn.dataset.confirmConflict = saveBtn.dataset.confirmConflict || 'false';
+      if (reclassify && (createRuleMerchant || createRuleDesc) && saveBtn.dataset.confirming !== 'true') {
+        const patterns = [];
+        if (createRuleMerchant && tx.merchant) patterns.push({ type: 'merchant', value: tx.merchant });
+        if (createRuleDesc && tx.description) patterns.push({ type: 'description', value: tx.description });
+        await buildPreviewList(patterns);
+        saveBtn.dataset.confirming = 'true';
+        status.textContent = 'Select the transactions to reclassify, then click Save to confirm.';
+        return;
+      }
+
       // Update transaction category
-      await fetchJson(`/api/transactions/${tx.id}`, { method: 'PATCH', body: JSON.stringify({ category_id: parseInt(categoryId, 10), subcategory_id: parseInt(subcategoryId, 10) }) });
+      await fetchJson(`/api/transactions/${tx.id}`, { method: 'PATCH', body: JSON.stringify({ category_id: parseInt(categoryId, 10), subcategory_id: subcategoryId ? parseInt(subcategoryId, 10) : null }) });
 
       // Create rules if needed
+      const createdRuleIds = [];
       if (createRuleMerchant || createRuleDesc) {
         const rulePromises = [];
         if (createRuleMerchant && tx.merchant) {
-          rulePromises.push(fetchJson('/api/rules', {
-            method: 'POST', body: JSON.stringify({
-              name: tx.merchant,
-              merchant_pattern: tx.merchant,
-              description_pattern: null,
-              category_id: parseInt(categoryId, 10),
-              subcategory_id: subcategoryId,
-              fuzzy_threshold: 0.75,
-              priority: 100
-            })
-          }));
+          rulePromises.push(createRuleWithConflict({
+            name: tx.merchant,
+            merchant_pattern: tx.merchant,
+            description_pattern: null,
+            category_id: parseInt(categoryId, 10),
+            subcategory_id: subcategoryId,
+            fuzzy_threshold: 0.75,
+            priority: 100
+          }, status, saveBtn).then(r => { if (r && r.id) createdRuleIds.push(r.id); return r; }));
         }
         if (createRuleDesc && tx.description) {
-          rulePromises.push(fetchJson('/api/rules', {
-            method: 'POST', body: JSON.stringify({
-              name: tx.description.slice(0, 50),
-              merchant_pattern: null,
-              description_pattern: tx.description,
-              category_id: parseInt(categoryId, 10),
-              subcategory_id: subcategoryId,
-              fuzzy_threshold: 0.75,
-              priority: 100
-            })
-          }));
+          rulePromises.push(createRuleWithConflict({
+            name: tx.description.slice(0, 50),
+            merchant_pattern: null,
+            description_pattern: tx.description,
+            category_id: parseInt(categoryId, 10),
+            subcategory_id: subcategoryId,
+            fuzzy_threshold: 0.75,
+            priority: 100
+          }, status, saveBtn).then(r => { if (r && r.id) createdRuleIds.push(r.id); return r; }));
         }
-        await Promise.all(rulePromises);
-        if (reclassify) {
+        const ruleResults = await Promise.all(rulePromises);
+        if (ruleResults.some(r => r && r.requiresConfirm)) {
+          status.textContent = 'A duplicate rule exists. Click Save again to replace it.';
+          return;
+        }
+      }
+
+      if (reclassify) {
+        const checks = Array.from(document.querySelectorAll('.preview-check')).filter(ch => ch.checked);
+        const targetIds = checks.map(ch => parseInt(ch.value, 10));
+        const targetRuleId = createdRuleIds.length ? createdRuleIds[0] : null;
+        if (targetIds.length) {
+          for (const tid of targetIds) {
+            await fetchJson(`/api/transactions/${tid}`, { method: 'PATCH', body: JSON.stringify({ category_id: parseInt(categoryId, 10), subcategory_id: subcategoryId ? parseInt(subcategoryId, 10) : null, rule_id: targetRuleId }) });
+          }
+        } else {
           await fetchJson('/api/reclassify', { method: 'POST', body: JSON.stringify({ user_id: 1 }) });
         }
       }
@@ -306,6 +546,24 @@
     document.getElementById('modal').addEventListener('click', (e) => {
       if (e.target.id === 'modal') closeModal();
     });
+
+    document.getElementById('filter-apply').addEventListener('click', () => { currentPage = 1; applyFilters(); });
+    document.getElementById('filter-search').addEventListener('input', () => { currentPage = 1; applyFilters(); });
+    document.querySelectorAll('th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.sort;
+        if (sortKey === key) {
+          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortKey = key;
+          sortDir = 'asc';
+        }
+        currentPage = 1;
+        applyFilters();
+      });
+    });
+    document.getElementById('prev-page').addEventListener('click', () => { if (currentPage > 1) { currentPage -= 1; applyFilters(); } });
+    document.getElementById('next-page').addEventListener('click', () => { const total = (window._transactions || []).length; if (currentPage * pageSize < total) { currentPage += 1; applyFilters(); } });
 
     loadCategories().then(loadTransactions);
   </script>
