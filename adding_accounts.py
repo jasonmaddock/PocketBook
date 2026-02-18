@@ -49,18 +49,28 @@ def create_requisition(bank_id, user_id=1):
     return add_account(bank_id, user_id=user_id, prompt=False)
 
 
-def list_accounts(user_id=1, include_pending: bool = False):
+def list_accounts(user_id=1, pending_only: bool = False):
+    acc = AccountsConnection()
+    return acc.retrieve_accounts(user_id, pending_only=pending_only)
+
+def activate_account(account):
     con = TokensConnection()
     acc = AccountsConnection()
     access_token = con.access_token
-    account_list = []
-    accounts = acc.retrieve_accounts(user_id, include_pending=include_pending)
-    for account in accounts:
-        api_account = ApiConnection.retrieve_accounts(account["req_id"], access_token)
-        api_account["req_id"] = account["req_id"]
-        api_account["bank_id"] = account["bank_id"]
-        account_list.append(api_account)
-    return account_list
+    api_account = ApiConnection.retrieve_accounts(account["req_id"], access_token)
+    provider_account_ids = api_account['accounts']
+    for id in provider_account_ids:
+        acc.store_account_info(
+            account['user_id'],
+            account['bank_id'],
+            account['eua_id'],
+            account['req_id'], 
+            account['valid_til'],
+            id,
+            "active"
+            )
+    acc.delete_account(account['account_id'])
+
 
 
 def _normalize_transaction(raw: dict) -> Dict:
@@ -94,35 +104,35 @@ def get_balances_and_transactions(account_list, user_id=1):
     balances_and_transactions = {}
     errors: List[dict] = []
     for account in account_list:
-        for account_id in account["accounts"]:
-            try:
-                acc.upsert_provider_account(account["req_id"], account_id)
-                acc.activate_account(account["req_id"], account_id)
-                b_n_t = ApiConnection.get_balance_and_transactions(account_id, access_token)
-                balance_amount = float(b_n_t["balances"][0]["balanceAmount"]["amount"])
-                acc.add_balance(account_id, balance_amount)
+        try:
+            account_id = account['provider_account_id']
+            # acc.upsert_provider_account(account["req_id"], account_id, bank_id=account.get("bank_id"), user_id=user_id)
+            # acc.activate_account(account["req_id"], account_id)
+            b_n_t = ApiConnection.get_balance_and_transactions(account_id, access_token)
+            balance_amount = float(b_n_t["balances"][0]["balanceAmount"]["amount"])
+            acc.add_balance(account_id, balance_amount)
 
-                booked = b_n_t["transactions"].get("booked", [])
-                pending = b_n_t["transactions"].get("pending", [])
-                normalized = [_normalize_transaction(t) for t in booked + pending]
-                classified = apply_rules(normalized, rules, default_category_id)
-                tra.add_transactions(account_id, user_id, classified)
+            booked = b_n_t["transactions"].get("booked", [])
+            pending = b_n_t["transactions"].get("pending", [])
+            normalized = [_normalize_transaction(t) for t in booked + pending]
+            classified = apply_rules(normalized, rules, default_category_id)
+            tra.add_transactions(account_id, user_id, classified)
+            balances_and_transactions[account_id] = {
+                "balance": balance_amount,
+                "transactions": classified,
+            }
+        except requests.exceptions.HTTPError as err:
+            status = getattr(err.response, "status_code", None)
+            errors.append(
+                {"account_id": account_id, "req_id": account.get("req_id"), "status": status, "error": str(err)}
+            )
+            continue
+        except Exception as exc:
+            errors.append(
+                {"account_id": account_id, "req_id": account.get("req_id"), "status": None, "error": str(exc)}
+            )
+            continue
 
-                balances_and_transactions[account_id] = {
-                    "balance": balance_amount,
-                    "transactions": classified,
-                }
-            except requests.exceptions.HTTPError as err:
-                status = getattr(err.response, "status_code", None)
-                errors.append(
-                    {"account_id": account_id, "req_id": account.get("req_id"), "status": status, "error": str(err)}
-                )
-                continue
-            except Exception as exc:
-                errors.append(
-                    {"account_id": account_id, "req_id": account.get("req_id"), "status": None, "error": str(exc)}
-                )
-                continue
     return {"accounts": balances_and_transactions, "errors": errors}
 
 

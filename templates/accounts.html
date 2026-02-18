@@ -42,6 +42,7 @@
     </thead>
     <tbody></tbody>
   </table>
+  <div id="account-msg" style="margin-top:8px; color:#94a3b8; font-size:12px;"></div>
 
   <script>
     async function fetchJson(url, options={}) {
@@ -54,6 +55,8 @@
       const data = await fetchJson('/api/accounts');
       const tbody = document.querySelector('#acc-table tbody');
       tbody.innerHTML = '';
+      const msg = document.getElementById('account-msg');
+      msg.textContent = '';
       data.forEach(acc => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -68,6 +71,9 @@
         tr.querySelector('button[data-del]').addEventListener('click', () => deleteAccount(acc.account_id));
         tbody.appendChild(tr);
       });
+      if (!data.length) {
+        msg.textContent = 'No accounts yet. Link a bank above, complete auth, then sync.';
+      }
     }
 
     async function loadBanks() {

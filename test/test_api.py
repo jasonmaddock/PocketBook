@@ -211,8 +211,12 @@ def test_delete_account_removes_transactions(test_client, monkeypatch):
     tc = TransactionsConnection()
     # insert account and transaction manually
     ac.store_account_info(user_id=1, bank_id="bank", eua_id="eua", req_id="req1", provider_account_id="prov1", valid_til="2025-01-01", status="active")
+    # second account same req/bank to ensure we don't overwrite
+    ac.upsert_provider_account(req_id="req1", provider_account_id="prov2", bank_id="bank", user_id=1, status="active")
     ac.cursor.execute("SELECT account_id FROM accounts WHERE req_id = 'req1'")
-    account_id = ac.cursor.fetchone()["account_id"]
+    rows = ac.cursor.fetchall()
+    account_id = rows[0]["account_id"]
+    account_id2 = rows[1]["account_id"]
     tc.add_transactions(account_id=account_id, user_id=1, transactions=[{
         "provider_id": "del_tx",
         "amount": -1.0,
@@ -232,3 +236,6 @@ def test_delete_account_removes_transactions(test_client, monkeypatch):
     assert ac.cursor.fetchone() is None
     tc.cursor.execute("SELECT * FROM transactions WHERE account_id = ?", (account_id,))
     assert tc.cursor.fetchone() is None
+    # second account still present
+    tc.cursor.execute("SELECT * FROM accounts WHERE account_id = ?", (account_id2,))
+    assert tc.cursor.fetchone() is not None

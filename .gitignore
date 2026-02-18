@@ -1,6 +1,7 @@
 # Generated artifacts
 __pycache__/
 *.pyc
+launch.json
 
 # Local data
 pocket.db

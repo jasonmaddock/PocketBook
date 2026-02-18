@@ -3,7 +3,7 @@ import json
 
 from flask import Flask, jsonify, request, render_template
 
-from adding_accounts import list_accounts, get_balances_and_transactions, generate_bank_list, create_requisition
+from adding_accounts import activate_account, list_accounts, get_balances_and_transactions, generate_bank_list, create_requisition
 from db import AccountsConnection, TransactionsConnection, RulesConnection, CategoryConnection, SubcategoryConnection
 from classification import Rule, classify_transaction
 import requests
@@ -154,8 +154,28 @@ def delete_rule(rule_id: int):
 def accounts():
     user_id = int(request.args.get("user_id", 1))
     ac = AccountsConnection()
-    rows = ac.retrieve_accounts(user_id, include_pending=True)
-    return jsonify([row_to_dict(r) for r in rows])
+    rows = ac.retrieve_accounts(user_id)
+    deduped = {}
+    pending_counter = {}
+
+    def score(row):
+        has_bal = 1 if row["balance"] is not None else 0
+        dt = row["balance_dt"] or ""
+        return (has_bal, dt)
+
+    for r in rows:
+        pid = r["provider_account_id"]
+        if pid:
+            existing = deduped.get(pid)
+            if not existing or score(r) > score(existing):
+                deduped[pid] = r
+        else:
+            rid = r["req_id"] or "pending"
+            pending_counter[rid] = pending_counter.get(rid, 0) + 1
+            key = f"{rid}-{pending_counter[rid]}"
+            deduped[key] = r
+
+    return jsonify([row_to_dict(r) for r in deduped.values()])
 
 
 @app.delete("/api/accounts/<int:account_id>")
@@ -400,7 +420,11 @@ def summary():
 def sync():
     user_id = int((request.json or {}).get("user_id", 1))
     try:
-        accounts = list_accounts(user_id, include_pending=True)
+        pending_accounts = list_accounts(user_id, pending_only=True)
+        for account in pending_accounts:
+            if account['status'] == "pending":
+                activate_account(account)
+        accounts = list_accounts(user_id)
         result = get_balances_and_transactions(accounts, user_id=user_id)
         return jsonify(result)
     except requests.exceptions.HTTPError as http_err:

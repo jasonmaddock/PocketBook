@@ -168,6 +168,10 @@ class AccountsConnection(Db):
         provider_account_id: str = None,
         status: str = "pending",
     ):
+        self.cursor.execute("SELECT account_id FROM accounts WHERE provider_account_id = ? AND status = 'active'", (provider_account_id,))
+        existing = self.cursor.fetchone()
+        if existing:
+            return
         self.cursor.execute(
             """
             INSERT INTO accounts (user_id, bank_id, eua_id, req_id, provider_account_id, status, valid_til)
@@ -177,14 +181,14 @@ class AccountsConnection(Db):
         )
         self.con.commit()
 
-    def retrieve_accounts(self, user_id: int, include_pending: bool = False):
-        if include_pending:
-            self.cursor.execute("SELECT * FROM accounts WHERE user_id = ?", (user_id,))
-        else:
+    def retrieve_accounts(self, user_id: int = 1, pending_only: bool = False):
+        if pending_only:
             self.cursor.execute(
-                "SELECT * FROM accounts WHERE user_id = ? AND (status = 'active' OR status IS NULL)",
-                (user_id,),
+                "SELECT * FROM accounts WHERE user_id = ? AND status = 'pending'",
+                (user_id,)
             )
+        else:
+            self.cursor.execute("SELECT * FROM accounts WHERE user_id = ?", (user_id,))
         return self.cursor.fetchall()
     
     def add_balance(self, provider_account_id: str, balance: float):
@@ -195,16 +199,36 @@ class AccountsConnection(Db):
         )
         self.con.commit()
 
-    def upsert_provider_account(self, req_id: str, provider_account_id: str):
+    def upsert_provider_account(self, req_id: str, provider_account_id: str, bank_id: str = None, user_id: int = 1, status: str = "active"):
+        # If this provider account already exists, just update status/req_id
+        self.cursor.execute("SELECT account_id FROM accounts WHERE provider_account_id = ?", (provider_account_id,))
+        existing = self.cursor.fetchone()
+        if existing:
+            self.cursor.execute(
+                "UPDATE accounts SET status = ?, req_id = ? WHERE provider_account_id = ?",
+                (status, req_id, provider_account_id),
+            )
+            self.con.commit()
+            return
+
+        # Otherwise insert a new row, seeding fields from the requisition row if present
+        self.cursor.execute("SELECT bank_id, eua_id, valid_til FROM accounts WHERE req_id = ? LIMIT 1", (req_id,))
+        base = self.cursor.fetchone()
+        seed_bank = bank_id or (base["bank_id"] if base else None)
+        seed_eua = base["eua_id"] if base else None
+        seed_valid = base["valid_til"] if base else None
         self.cursor.execute(
-            "UPDATE accounts SET provider_account_id = ? WHERE req_id = ?",
-            (provider_account_id, req_id),
+            """
+            INSERT INTO accounts (user_id, bank_id, eua_id, req_id, provider_account_id, status, valid_til)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, seed_bank, seed_eua, req_id, provider_account_id, status, seed_valid),
         )
         self.con.commit()
 
     def activate_account(self, req_id: str, provider_account_id: str):
         self.cursor.execute(
-            "UPDATE accounts SET provider_account_id = ?, status = 'active' WHERE req_id = ?",
+            "UPDATE accounts SET status = 'active' WHERE req_id = ?, provider_account_id = ?",
             (provider_account_id, req_id),
         )
         self.con.commit()
