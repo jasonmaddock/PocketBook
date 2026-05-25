@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Iterable, List, Optional, Tuple
 
+from config import UNCATEGORISED_NAME, UNCATEGORISED_ID
 
 @dataclass
 class Rule:
@@ -43,11 +44,13 @@ def _score(pattern: Optional[str], text: str) -> Optional[float]:
     return SequenceMatcher(None, pattern, text).ratio()
 
 
-def classify_transaction(tx: dict, rules: Iterable[Rule], default_category_id: Optional[int] = None) -> Tuple[Optional[int], str, Optional[int], Optional[int], str, float]:
+def classify_transaction(tx: dict, rules: Iterable[Rule]) -> Tuple[Optional[int], str, Optional[int], Optional[int], str, float]:
     merchant = (tx.get("merchant") or "").strip()
     description = (tx.get("description") or "").strip()
 
     for rule in sorted(rules, key=lambda r: (r.priority, r.id or 0)):
+        if rule.name == "WAITROSE" and tx['id'] == 524:
+            print("")
         scores: List[float] = []
         merchant_score = _score(rule.merchant_pattern, merchant)
         desc_score = _score(rule.description_pattern, description)
@@ -61,14 +64,13 @@ def classify_transaction(tx: dict, rules: Iterable[Rule], default_category_id: O
         if score >= rule.fuzzy_threshold:
             return rule.category_id, rule.category_name, rule.subcategory_id, rule.subcategory_name or "", rule.id, score
 
-    return default_category_id, "Uncategorized", None, "", None, 0.0
+    return UNCATEGORISED_ID, UNCATEGORISED_NAME, None, "", None, 0.0
 
-
-def apply_rules(transactions: List[dict], rules: Iterable[Rule], default_category_id: Optional[int] = None) -> List[dict]:
+def apply_rules(transactions: List[dict], rules: Iterable[Rule]) -> List[dict]:
     rules_list = list(rules)
     enriched = []
     for tx in transactions:
-        category_id, category_name, subcategory_id, subcategory_name, rule_id, confidence = classify_transaction(tx, rules_list, default_category_id)
+        category_id, category_name, subcategory_id, subcategory_name, rule_id, confidence = classify_transaction(tx, rules_list)
         enriched.append({
             **tx,
             "category_id": category_id,

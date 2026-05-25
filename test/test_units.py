@@ -1,5 +1,8 @@
 import importlib
+import asyncio
+from copy import deepcopy
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -36,6 +39,106 @@ def test_api_connection_requests(monkeypatch):
     assert resp["access"] == "token"
     assert "application/json" in called["headers"]["Content-Type"]
     assert called["json"]["secret_id"] == api_connection.SECRET_ID
+
+
+def test_get_balance_and_transactions_uses_aiohttp_session(monkeypatch):
+    import api_connection
+    from test import assets
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            pass
+
+        async def json(self):
+            return self.payload
+
+    class FakeGetContext:
+        def __init__(self, payload):
+            self.payload = payload
+
+        async def __aenter__(self):
+            return FakeResponse(self.payload)
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+    class FakeSession:
+        def __init__(self):
+            self.get = Mock(side_effect=[
+                FakeGetContext(assets.mock_balance),
+                FakeGetContext(assets.mock_trans),
+            ])
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+    fake_session = FakeSession()
+    monkeypatch.setattr(api_connection.aiohttp, "ClientSession", lambda: fake_session)
+
+    result = asyncio.run(
+        api_connection.ApiConnection.get_balance_and_transactions(
+            "account-id",
+            "access-token",
+        )
+    )
+
+    assert result == {
+        "account_id": "account-id",
+        "response": {
+            "balances": assets.mock_balance["balances"],
+            "transactions": assets.mock_trans["transactions"],
+        },
+    }
+    assert fake_session.get.call_count == 2
+    first_call, second_call = fake_session.get.call_args_list
+    assert first_call.kwargs["url"].endswith("/accounts/account-id/balances/")
+    assert second_call.kwargs["url"].endswith("/accounts/account-id/transactions/")
+    assert first_call.kwargs["headers"]["Authorization"] == "Bearer access-token"
+
+
+def test_get_balances_and_transactions_calls_api_for_each_account(monkeypatch):
+    import adding_accounts
+    from test import assets
+
+    class DummyToken:
+        @property
+        def access_token(self):
+            return "access-token"
+
+    async def fake_get_balance_and_transactions(account_id, access_token):
+        response = deepcopy(assets.mock_get_accounts_and_trans)
+        response["account_id"] = account_id
+        return response
+
+    api_mock = AsyncMock(side_effect=fake_get_balance_and_transactions)
+
+    monkeypatch.setattr(adding_accounts, "TokensConnection", DummyToken)
+    monkeypatch.setattr(
+        adding_accounts.ApiConnection,
+        "get_balance_and_transactions",
+        api_mock,
+    )
+
+    account_list = [
+        {"provider_account_id": "account-1"},
+        {"provider_account_id": "account-2"},
+    ]
+
+    result = asyncio.run(adding_accounts.get_balances_and_transactions(account_list))
+
+    assert [r["account_id"] for r in result] == ["account-1", "account-2"]
+    assert result[0]["response"] == assets.mock_get_accounts_and_trans["response"]
+    assert result[1]["response"] == assets.mock_get_accounts_and_trans["response"]
+    assert api_mock.await_count == 2
+    api_mock.assert_any_await("account-1", "access-token")
+    api_mock.assert_any_await("account-2", "access-token")
+
 
 
 def test_generate_bank_list_filters(monkeypatch):

@@ -241,13 +241,106 @@ BalanceDt = DATETIME
 """
 
 transactions_table = """
-CREATE TABLE transactions(
-ID INTEGER PRIMARY KEY AUTOINCREMENT,
-AccountId TEXT,
-UserId TEXT,
-Amount DECIMAL(16,2),
-Date DATETIME,
-Debtor TEXT,
-Description TEXT
+CREATE TABLE IF NOT EXISTS transactions(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id TEXT UNIQUE,
+    account_id INTEGER,
+    user_id INTEGER,
+    amount REAL,
+    currency TEXT,
+    date TEXT,
+    merchant TEXT,
+    description TEXT,
+    category_id INTEGER,
+    subcategory_id INTEGER,
+    rule_id INTEGER,
+    raw_json TEXT
 );
 """
+
+mock_balance = {
+  "balances": [
+    {
+      "balanceAmount": {
+        "amount": "657.49",
+        "currency": "string"
+      },
+      "balanceType": "string",
+      "referenceDate": "2021-11-22"
+    },
+    {
+      "balanceAmount": {
+        "amount": "185.67",
+        "currency": "string"
+      },
+      "balanceType": "string",
+      "referenceDate": "2021-11-19"
+    }
+  ]
+}
+
+mock_trans = {
+  "transactions": {
+    "booked": [
+      {
+        "transactionId": "string",
+        "debtorName": "string",
+        "debtorAccount": {
+          "iban": "string"
+        },
+        "transactionAmount": {
+          "currency": "string",
+          "amount": "328.18"
+        },
+        "bankTransactionCode": "string",
+        "bookingDate": "date",
+        "valueDate": "date",
+        "remittanceInformationUnstructured": "string"
+      },
+      {
+        "transactionId": "string",
+        "transactionAmount": {
+          "currency": "string",
+          "amount": "947.26"
+        },
+        "bankTransactionCode": "string",
+        "bookingDate": "date",
+        "valueDate": "date",
+        "remittanceInformationUnstructured": "string"
+      }
+    ],
+    "pending": [
+      {
+        "transactionAmount": {
+          "currency": "string",
+          "amount": "99.20"
+        },
+        "valueDate": "date",
+        "remittanceInformationUnstructured": "string"
+      }
+    ]
+  },
+  "last_updated": "ISO 8601 timestamp"
+}
+
+mock_get_accounts_and_trans = {
+    'account_id': 'account-id', 'response': 
+      {'balances': 
+       [
+          {'balanceAmount': 
+            {'amount': '657.49', 'currency': 'string'}, 'balanceType': 'string', 'referenceDate': '2021-11-22'},
+          {'balanceAmount': 
+            {'amount': '185.67', 'currency': 'string'}, 'balanceType': 'string', 'referenceDate': '2021-11-19'}
+        ], 
+        'transactions':
+          {'booked': 
+           [
+            {'transactionId': 'string', 'debtorName': 'string', 'debtorAccount': {'iban': 'string'}, 'transactionAmount': {'currency': 'string', 'amount': '328.18'}, 'bankTransactionCode': 'string', 'bookingDate': 'date', 'valueDate': 'date', 'remittanceInformationUnstructured': 'string'},
+            {'transactionId': 'string', 'transactionAmount': {'currency': 'string', 'amount': '947.26'}, 'bankTransactionCode': 'string', 'bookingDate': 'date', 'valueDate': 'date', 'remittanceInformationUnstructured': 'string'}
+            ],
+            'pending': [
+          {'transactionAmount': {'currency': 'string', 'amount': '99.20'}, 'valueDate': 'date', 'remittanceInformationUnstructured': 'string'}
+          ]
+          }
+          }
+  }

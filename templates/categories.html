@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <title>PocketBook Categories</title>
   <style>
-    body { font-family: "Helvetica Neue", Arial, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
-    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); margin-bottom: 16px; }
-    nav a { color: #e2e8f0; text-decoration: none; padding: 6px 10px; border-radius: 8px; border:1px solid #1f2937; background:#0b1220; }
-    button { background: #2563eb; border: none; color: white; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; background: rgb(15,23,42); color: rgb(226,232,240); margin: 0; padding: 24px; }
+    .card { background: rgb(17,24,39); border: 1px solid rgb(31,41,55); border-radius: 12px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); margin-bottom: 16px; }
+    nav a { color: rgb(226,232,240); text-decoration: none; padding: 6px 10px; border-radius: 8px; border:1px solid rgb(31,41,55); background:rgb(11,18,32); }
+    button { background: rgb(37,99,235); border: none; color: white; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .cat-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #1f2937;}
-    .pill { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; color:#e2e8f0; }
+    .cat-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid rgb(31,41,55);}
+    .pill { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; color:rgb(226,232,240); }
   </style>
 </head>
 <body>
@@ -28,36 +28,36 @@
   <div class="card">
     <div style="font-size:14px; font-weight:600; margin-bottom:6px;">Create / Edit category</div>
     <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-      <input id="cat-name" placeholder="Name" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;" />
-      <select id="cat-color" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;">
+      <input id="cat-name" placeholder="Name" style="padding:8px; border-radius:6px; border:1px solid rgb(31,41,55); background:rgb(15,23,42); color:rgb(226,232,240);" />
+      <select id="cat-color" style="padding:8px; border-radius:6px; border:1px solid rgb(31,41,55); background:rgb(15,23,42); color:rgb(226,232,240);">
         <option value="">Color</option>
-        <option value="#ef4444">Red</option>
-        <option value="#f97316">Orange</option>
-        <option value="#f59e0b">Amber</option>
-        <option value="#eab308">Yellow</option>
-        <option value="#22c55e">Green</option>
-        <option value="#14b8a6">Teal</option>
-        <option value="#06b6d4">Cyan</option>
-        <option value="#3b82f6">Blue</option>
-        <option value="#6366f1">Indigo</option>
-        <option value="#8b5cf6">Violet</option>
-        <option value="#ec4899">Pink</option>
-        <option value="#f973ab">Fuchsia</option>
+        <option value="rgb(239,68,68)">Red</option>
+        <option value="rgb(249,115,22)">Orange</option>
+        <option value="rgb(245,158,11)">Amber</option>
+        <option value="rgb(234,179,8)">Yellow</option>
+        <option value="rgb(34,197,94)">Green</option>
+        <option value="rgb(20,184,166)">Teal</option>
+        <option value="rgb(6,182,212)">Cyan</option>
+        <option value="rgb(59,130,246)">Blue</option>
+        <option value="rgb(99,102,241)">Indigo</option>
+        <option value="rgb(139,92,246)">Violet</option>
+        <option value="rgb(236,72,153)">Pink</option>
+        <option value="rgb(249,115,171)">Fuchsia</option>
       </select>
-      <input id="cat-budget" placeholder="Budget amount" style="padding:8px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0; width:140px;" />
+      <input id="cat-budget" placeholder="Budget amount" style="padding:8px; border-radius:6px; border:1px solid rgb(31,41,55); background:rgb(15,23,42); color:rgb(226,232,240); width:140px;" />
       <button id="save-cat-btn">Save category</button>
     </div>
     <div id="categories-list"></div>
   </div>
 
   <div id="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; z-index:50;">
-    <div style="background:#0f172a; border:1px solid #1f2937; border-radius:12px; padding:20px; width:520px; color:#e2e8f0; box-shadow:0 10px 40px rgba(0,0,0,0.45); max-height:80vh; overflow:auto;">
+    <div style="background:rgb(15,23,42); border:1px solid rgb(31,41,55); border-radius:12px; padding:20px; width:520px; color:rgb(226,232,240); box-shadow:0 10px 40px rgba(0,0,0,0.45); max-height:80vh; overflow:auto;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
         <div id="modal-title" style="font-size:18px; font-weight:700;"></div>
-        <button id="close-modal" style="background:#1f2937; padding:6px 10px;">X</button>
+        <button id="close-modal" style="background:rgb(31,41,55); padding:6px 10px;">X</button>
       </div>
       <div id="modal-body" style="font-size:14px;"></div>
-      <div id="modal-status" style="font-size:12px; color:#cbd5e1; margin-top:8px;"></div>
+      <div id="modal-status" style="font-size:12px; color:rgb(203,213,225); margin-top:8px;"></div>
     </div>
   </div>
 
@@ -100,7 +100,7 @@
       const container = document.getElementById('categories-list');
       container.innerHTML = '';
       if (!cats.length) {
-        container.innerHTML = '<div style="color:#94a3b8;">No categories yet.</div>';
+        container.innerHTML = '<div style="color:rgb(148,163,184);">No categories yet.</div>';
         return;
       }
       cats.forEach(cat => {
@@ -108,8 +108,8 @@
         div.className = 'cat-row';
         div.innerHTML = `
           <div>
-            <span class="pill" style="background:${cat.color || '#1f2937'}; font-weight:600;">${cat.name}</span>
-            <div style="font-size:12px; color:#94a3b8; margin-top:4px;">Budget: ${cat.budget || 0}</div>
+            <span class="pill" style="background:${cat.color || 'rgb(31,41,55)'}; font-weight:600;">${cat.name}</span>
+            <div style="font-size:12px; color:rgb(148,163,184); margin-top:4px;">Budget: ${cat.budget || 0}</div>
           </div>
           <div style="display:flex; gap:6px;">
             <button data-id="${cat.id}" class="open-rules">Rules</button>
@@ -126,14 +126,28 @@
       });
     }
 
+    function subName(subId) {
+      const sub = _subcategories.find(s => s.id === subId);
+      return sub ? sub.name : null;
+    }
+
     function renderRulesSection(categoryId) {
       const rules = rulesForCategory(categoryId);
+      const subs = subsForCategory(categoryId);
+      const subOptions = [`<option value="">Base category</option>`, ...subs.map(s => `<option value="${s.id}">${s.name}</option>`)].join('');
       const list = rules.length
         ? rules.map(r => `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #1f2937;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgb(31,41,55);">
               <div>
                 <div style="font-weight:600;">${r.name || '(no name)'}</div>
-                <div style="font-size:12px; color:#94a3b8;">Merchant: ${r.merchant_pattern || '-'} | Desc: ${r.description_pattern || '-'}</div>
+                <div style="font-size:12px; color:rgb(148,163,184);">
+                  Merchant: ${r.merchant_pattern || '-'} | Desc: ${r.description_pattern || '-'}
+                </div>
+                <div style="margin-top:2px;">
+                  <span class="pill" style="background:${r.subcategory_id ? 'rgb(59,130,246)' : 'rgb(31,41,55)'}; color: white; font-size:11px;">
+                    ${r.subcategory_id ? `Subcategory: ${subName(r.subcategory_id) || r.subcategory_id}` : 'Base category'}
+                  </span>
+                </div>
               </div>
               <div style="display:flex; gap:6px;">
                 <button class="edit-rule" data-id="${r.id}" data-cat="${categoryId}">Edit</button>
@@ -141,15 +155,18 @@
               </div>
             </div>
           `).join('')
-        : '<div style="color:#94a3b8;">No rules for this category.</div>';
+        : '<div style="color:rgb(148,163,184);">No rules for this category.</div>';
 
       return `
-        <div style="margin-top:4px; padding:8px; border:1px solid #1f2937; border-radius:8px; background:#0b1220;">
+        <div style="margin-top:4px; padding:8px; border:1px solid rgb(31,41,55); border-radius:8px; background:rgb(11,18,32);">
           <div style="margin-bottom:10px;">
-            <div style="font-size:12px; color:#94a3b8; margin-bottom:4px;">Add a rule (matches if merchant or description contains/fuzzy-matches)</div>
+            <div style="font-size:12px; color:rgb(148,163,184); margin-bottom:4px;">Add a rule (matches if merchant or description contains/fuzzy-matches)</div>
             <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-              <input data-cat-merchant="${categoryId}" placeholder="Merchant pattern" style="padding:6px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;" />
-              <input data-cat-desc="${categoryId}" placeholder="Description pattern" style="padding:6px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;" />
+              <input data-cat-merchant="${categoryId}" placeholder="Merchant pattern" style="padding:6px; border-radius:6px; border:1px solid rgb(31,41,55); background:rgb(15,23,42); color:rgb(226,232,240);" />
+              <input data-cat-desc="${categoryId}" placeholder="Description pattern" style="padding:6px; border-radius:6px; border:1px solid rgb(31,41,55); background:rgb(15,23,42); color:rgb(226,232,240);" />
+              <select data-cat-sub="${categoryId}" style="padding:6px; border-radius:6px; border:1px solid rgb(31,41,55); background:rgb(15,23,42); color:rgb(226,232,240);">
+                ${subOptions}
+              </select>
               <button class="add-rule" data-cat="${categoryId}">Save rule</button>
             </div>
           </div>
@@ -162,10 +179,10 @@
       const subs = subsForCategory(categoryId);
       const list = subs.length
         ? subs.map(s => `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #1f2937;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgb(31,41,55);">
               <div>
                 <div style="font-weight:600;">${s.name}</div>
-                <div style="font-size:12px; color:#94a3b8;">Budget: ${s.budget || 0}</div>
+                <div style="font-size:12px; color:rgb(148,163,184);">Budget: ${s.budget || 0}</div>
               </div>
               <div style="display:flex; gap:6px;">
                 <button class="edit-sub" data-id="${s.id}" data-cat="${categoryId}">Edit</button>
@@ -173,29 +190,29 @@
               </div>
             </div>
           `).join('')
-        : '<div style="color:#94a3b8;">No subcategories for this category.</div>';
+        : '<div style="color:rgb(148,163,184);">No subcategories for this category.</div>';
 
       return `
-        <div style="margin-top:4px; padding:8px; border:1px solid #1f2937; border-radius:8px; background:#0b1220;">
+        <div style="margin-top:4px; padding:8px; border:1px solid rgb(31,41,55); border-radius:8px; background:rgb(11,18,32);">
           <div style="margin-bottom:10px;">
-            <div style="font-size:12px; color:#94a3b8; margin-bottom:4px;">Add / Edit subcategory</div>
+            <div style="font-size:12px; color:rgb(148,163,184); margin-bottom:4px;">Add / Edit subcategory</div>
             <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-              <input data-sub-name="${categoryId}" placeholder="Subcategory name" style="padding:6px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;" />
-              <input data-sub-budget="${categoryId}" placeholder="Budget" style="padding:6px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0; width:100px;" />
-              <select data-sub-color="${categoryId}" style="padding:6px; border-radius:6px; border:1px solid #1f2937; background:#0f172a; color:#e2e8f0;">
+              <input data-sub-name="${categoryId}" placeholder="Subcategory name" style="padding:6px; border-radius:6px; border:1px solid rgb(31,41,55); background:rgb(15,23,42); color:rgb(226,232,240);" />
+              <input data-sub-budget="${categoryId}" placeholder="Budget" style="padding:6px; border-radius:6px; border:1px solid rgb(31,41,55); background:rgb(15,23,42); color:rgb(226,232,240); width:100px;" />
+              <select data-sub-color="${categoryId}" style="padding:6px; border-radius:6px; border:1px solid rgb(31,41,55); background:rgb(15,23,42); color:rgb(226,232,240);">
                 <option value="">Color</option>
-                <option value="#ef4444">Red</option>
-                <option value="#f97316">Orange</option>
-                <option value="#f59e0b">Amber</option>
-                <option value="#eab308">Yellow</option>
-                <option value="#22c55e">Green</option>
-                <option value="#14b8a6">Teal</option>
-                <option value="#06b6d4">Cyan</option>
-                <option value="#3b82f6">Blue</option>
-                <option value="#6366f1">Indigo</option>
-                <option value="#8b5cf6">Violet</option>
-                <option value="#ec4899">Pink</option>
-                <option value="#f973ab">Fuchsia</option>
+                <option value="rgb(239,68,68)">Red</option>
+                <option value="rgb(249,115,22)">Orange</option>
+                <option value="rgb(245,158,11)">Amber</option>
+                <option value="rgb(234,179,8)">Yellow</option>
+                <option value="rgb(34,197,94)">Green</option>
+                <option value="rgb(20,184,166)">Teal</option>
+                <option value="rgb(6,182,212)">Cyan</option>
+                <option value="rgb(59,130,246)">Blue</option>
+                <option value="rgb(99,102,241)">Indigo</option>
+                <option value="rgb(139,92,246)">Violet</option>
+                <option value="rgb(236,72,153)">Pink</option>
+                <option value="rgb(249,115,171)">Fuchsia</option>
               </select>
               <button class="add-sub" data-cat="${categoryId}">Save subcategory</button>
             </div>
@@ -280,7 +297,9 @@
       const merchant = document.querySelector(`input[data-cat-merchant="${catId}"]`).value;
       const desc = document.querySelector(`input[data-cat-desc="${catId}"]`).value;
       const addBtn = document.querySelector(`button.add-rule[data-cat="${catId}"]`);
+      const subSelect = document.querySelector(`select[data-cat-sub="${catId}"]`);
       const editingId = addBtn ? addBtn.dataset.editing : '';
+      const subcategory_id = subSelect && subSelect.value !== '' ? parseInt(subSelect.value, 10) : null;
       if (!merchant && !desc) {
         alert('Add a merchant or description pattern');
         return;
@@ -290,6 +309,7 @@
         merchant_pattern: merchant,
         description_pattern: desc,
         category_id: catId,
+        subcategory_id,
         fuzzy_threshold: 0.75,
         priority: 100
       };
@@ -321,6 +341,7 @@
         return;
       }
       if (addBtn) addBtn.dataset.editing = '';
+      if (subSelect) subSelect.value = '';
       await loadCategories();
       refreshModalIfOpen();
     }
@@ -362,6 +383,8 @@
         document.querySelector(`input[data-cat-desc="${catId}"]`).value = rule.description_pattern || '';
         const btn = document.querySelector(`button.add-rule[data-cat="${catId}"]`);
         if (btn) btn.dataset.editing = rid;
+        const subSelect = document.querySelector(`select[data-cat-sub="${catId}"]`);
+        if (subSelect) subSelect.value = rule.subcategory_id || '';
       }
     });
 

@@ -3,8 +3,7 @@ import sqlite3
 
 from test import assets
 
-from db import TokensConnection
-
+import db
 
 @pytest.fixture
 def test_db():
@@ -34,3 +33,13 @@ def tokens_connection(test_db):
             self.cursor = self.con.cursor()
     
     return TestTokensConnection()
+
+@pytest.fixture
+def test_tx_db():
+    tx_db = db.TransactionsConnection(":memory:")
+    tx_db.cursor.execute(assets.transactions_table)
+    tx_db.con.commit()
+
+    yield tx_db
+
+    tx_db.con.close()

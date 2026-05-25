@@ -1,6 +1,10 @@
 from datetime import datetime, timedelta
 from typing import Dict, List
 import requests
+import logging
+
+import aiohttp
+import asyncio
 
 from db import (
     TokensConnection,
@@ -12,6 +16,7 @@ from db import (
 from api_connection import ApiConnection
 from classification import apply_rules, Rule
 
+logger = logging.getLogger(__name__)
 
 def generate_bank_list(country_code: str = "GB"):
     con = TokensConnection()
@@ -74,65 +79,109 @@ def activate_account(account):
 
 
 def _normalize_transaction(raw: dict) -> Dict:
-    amount_info = raw.get("transactionAmount") or raw.get("transacitonAmount") or {}
-    amount = amount_info.get("amount", 0.0)
-    currency = amount_info.get("currency", "")
-    return {
-        "provider_id": raw.get("transactionId") or raw.get("internalTransactionId"),
-        "amount": amount,
-        "currency": currency,
-        "date": raw.get("bookingDate") or raw.get("valueDate"),
-        "merchant": raw.get("creditorName") or raw.get("debtorName"),
-        "description": raw.get("remittanceInformationUnstructured") or raw.get("additionalInformation"),
-        "raw": raw,
-    }
+    try:
+        amount_info = raw.get("transactionAmount") or raw.get("transacitonAmount") or {}
+        amount = amount_info.get("amount", 0.0)
+        currency = amount_info.get("currency", "")
+        if not raw.get("internalTransactionId") and not raw.get("transactionId"):
+            print("test")
+        return {
+            "provider_id": raw.get("internalTransactionId") or raw.get("transactionId"),
+            "amount": amount,
+            "currency": currency,
+            "date": raw.get("bookingDate") or raw.get("valueDate"),
+            "merchant": raw.get("creditorName") or raw.get("debtorName"),
+            "description": raw.get("remittanceInformationUnstructured") or raw.get("additionalInformation"),
+            "raw": raw,
+        }
+    except:
+        print("test")
 
 
-def get_balances_and_transactions(account_list, user_id=1):
+async def get_balances_and_transactions(account_list, user_id=1):
     con = TokensConnection()
+    access_token = con.access_token
+    logger.info("Fetching balances and transactions")
+    tasks = [ApiConnection.get_balance_and_transactions(a['provider_account_id'], access_token) for a in account_list]
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    successful_responses = []
+    for response in responses:
+        if isinstance(response, Exception):
+            logger.error(f"Failed to fetch balances and transactions: {response}")
+            continue
+        logger.info(f"Successful fetch for {response['account_id']}")
+        successful_responses.append(response)
+    return successful_responses
+
+def unpack_balances_and_transactions(response):
+    balance_amount = float(response['response']["balances"][0]["balanceAmount"]["amount"])
+    booked = response["transactions"].get("booked", [])
+    pending = response["transactions"].get("pending", [])
+    normalised = [_normalize_transaction(t) for t in booked + pending]
+    return {"account_id": response["account_id"], "balance": balance_amount, "transactions": normalised}
+
+async def coordinate_sync(account_list, user_id=1):
+    tra = TransactionsConnection()
+    rules_con = RulesConnection()
+    rules = [Rule.from_row(r) for r in rules_con.list_rules()]
+    balances_and_transactions = {}
+    responses = await get_balances_and_transactions(account_list, user_id=1)
+    for r in responses:
+        normalised = unpack_balances_and_transactions(r)
+        classified = apply_rules(normalised["transactions"], rules)
+        tra.add_transactions(r["account_id"], user_id, classified)
+        balances_and_transactions[r["account_id"]] = {
+            "balance": r["balance"],
+            "transactions": classified,
+        }
+    return {"accounts": balances_and_transactions, "errors": []}
+
+async def get_balances_and_transactions_old(account_list, user_id=1):
+    # con = TokensConnection()
     acc = AccountsConnection()
     tra = TransactionsConnection()
     rules_con = RulesConnection()
-    cat_con = CategoryConnection()
-    subcat_con = None
-    access_token = con.access_token
+    # access_token = con.access_token
 
     # Convert DB rows to Rule objects for classification
     rules = [Rule.from_row(r) for r in rules_con.list_rules()]
-    default_category_id = cat_con.default_category_id
 
     balances_and_transactions = {}
     errors: List[dict] = []
-    for account in account_list:
+    logger.info("Fetching balances and transactions")
+    tasks = [ApiConnection.get_balance_and_transactions(a['provider_account_id'], access_token) for a in account_list]
+    account_ids = [a['provider_account_id']for a in account_list]
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    for response, account_id in zip(responses, account_ids):
+        # if str(response.code)[0] != 2:
+        #     logger.error(f"Failed to fetch for {account_id}. {response.code} - {response.message}")
+        #     continue
         try:
-            account_id = account['provider_account_id']
-            # acc.upsert_provider_account(account["req_id"], account_id, bank_id=account.get("bank_id"), user_id=user_id)
-            # acc.activate_account(account["req_id"], account_id)
-            b_n_t = ApiConnection.get_balance_and_transactions(account_id, access_token)
-            balance_amount = float(b_n_t["balances"][0]["balanceAmount"]["amount"])
+            # logger.info(f"Successful fetch for {account_id}")
+            balance_amount = float(response["balances"][0]["balanceAmount"]["amount"])
             acc.add_balance(account_id, balance_amount)
 
-            booked = b_n_t["transactions"].get("booked", [])
-            pending = b_n_t["transactions"].get("pending", [])
+            booked = response["transactions"].get("booked", [])
+            pending = response["transactions"].get("pending", [])
             normalized = [_normalize_transaction(t) for t in booked + pending]
-            classified = apply_rules(normalized, rules, default_category_id)
+            classified = apply_rules(normalized, rules)
             tra.add_transactions(account_id, user_id, classified)
             balances_and_transactions[account_id] = {
                 "balance": balance_amount,
                 "transactions": classified,
             }
-        except requests.exceptions.HTTPError as err:
+        except aiohttp.ClientResponseError as err:
             status = getattr(err.response, "status_code", None)
             errors.append(
-                {"account_id": account_id, "req_id": account.get("req_id"), "status": status, "error": str(err)}
+                {"account_id": account_id, "status": status, "error": str(err)}
             )
             continue
         except Exception as exc:
             errors.append(
-                {"account_id": account_id, "req_id": account.get("req_id"), "status": None, "error": str(exc)}
+                {"account_id": account_id, "status": None, "error": str(exc)}
             )
             continue
-
+    logger.info(f"Balances and transactions returned.")
     return {"accounts": balances_and_transactions, "errors": errors}
 
 

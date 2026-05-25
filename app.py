@@ -1,21 +1,36 @@
 import os
 import json
+import asyncio
+import logging
+import sys
+import re
 
 from flask import Flask, jsonify, request, render_template
 
-from adding_accounts import activate_account, list_accounts, get_balances_and_transactions, generate_bank_list, create_requisition
+from adding_accounts import activate_account, list_accounts, coordinate_sync, generate_bank_list, create_requisition
 from db import AccountsConnection, TransactionsConnection, RulesConnection, CategoryConnection, SubcategoryConnection
 from classification import Rule, classify_transaction
 import requests
 
+from config import UNCATEGORISED_ID
+
 CATEGORY_COLORS = [
-    "#ef4444", "#f97316", "#f59e0b", "#eab308",
-    "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6",
-    "#6366f1", "#8b5cf6", "#ec4899", "#f973ab",
+    "rgb(239, 68, 68)", "rgb(249, 115, 22)", "rgb(245, 158, 11)", "rgb(234, 179, 8)",
+    "rgb(34, 197, 94)", "rgb(20, 184, 166)", "rgb(6, 182, 212)", "rgb(59, 130, 246)",
+    "rgb(99, 102, 241)", "rgb(139, 92, 246)", "rgb(236, 72, 153)", "rgb(249, 115, 171)",
 ]
 
 
 app = Flask(__name__)
+
+# Ensure INFO/DEBUG logs go to the terminal (Flask defaults to WARNING).
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True,
+)
+app.logger.setLevel(logging.DEBUG)
 
 
 def row_to_dict(row):
@@ -56,62 +71,70 @@ def get_rules():
 
 @app.post("/api/rules")
 def create_rule():
+    # How this should work:
+    # 1. We don't want to duplicate a rule by merhcnat pattern or description pattern. for the relevant one to the rule, search the DB for the exisitng rule
+    # for each one category agnostic. If all requested exist tell the user and return . Or else.
+    # 2. Create the rules for those requested that do not already exist
+
     payload = request.json or {}
     rc = RulesConnection()
     category_id = payload.get("category_id")
     if not category_id:
         return jsonify({"error": "category_id required"}), 400
     subcategory_id = payload.get("subcategory_id")
+    merchant_pattern = payload.get("merchant_pattern")
+    description_pattern = payload.get("description_pattern")
     # Deduplicate: check for an existing rule with same patterns + category
-    rc.cursor.execute(
-        """
-        SELECT id FROM rules
-        WHERE category_id = ? AND COALESCE(merchant_pattern,'') = COALESCE(?, '')
-          AND COALESCE(description_pattern,'') = COALESCE(?, '')
-        LIMIT 1
-        """,
-        (category_id, payload.get("merchant_pattern"), payload.get("description_pattern")),
-    )
-    existing = rc.cursor.fetchone()
-    if existing:
-        return jsonify({"id": existing["id"], "deduped": True}), 200
+    # rc.cursor.execute(
+    #     """
+    #     SELECT id FROM rules
+    #     WHERE category_id = ? AND COALESCE(merchant_pattern,'') = COALESCE(?, '')
+    #       AND COALESCE(description_pattern,'') = COALESCE(?, '')
+    #     LIMIT 1
+    #     """,
+    #     (category_id, merchant_pattern, description_pattern),
+    # )
+    # existing = rc.cursor.fetchone()
+    conflict = rc.conflict(merchant_pattern, description_pattern)
+    if conflict:
+        return jsonify({"id": conflict["id"], "deduped": True}), 200
     # detect conflicts on merchant/description patterns regardless of category
-    conflict_row = None
-    if payload.get("merchant_pattern") or payload.get("description_pattern"):
-        rc.cursor.execute(
-            """
-            SELECT rules.*, categories.name AS category_name
-            FROM rules
-            LEFT JOIN categories ON categories.id = rules.category_id
-            WHERE (? IS NOT NULL AND merchant_pattern = ?)
-               OR (? IS NOT NULL AND description_pattern = ?)
-            LIMIT 1
-            """,
-            (
-                payload.get("merchant_pattern"),
-                payload.get("merchant_pattern"),
-                payload.get("description_pattern"),
-                payload.get("description_pattern"),
-            ),
-        )
-        conflict_row = rc.cursor.fetchone()
-    if conflict_row and not payload.get("replace_existing"):
-        return jsonify({"error": "conflict", "existing": row_to_dict(conflict_row)}), 409
-    if conflict_row and payload.get("replace_existing"):
+    # conflict_row = None
+    # if merchant_pattern or description_pattern:
+    #     rc.cursor.execute(
+    #         """
+    #         SELECT rules.*, categories.name AS category_name
+    #         FROM rules
+    #         LEFT JOIN categories ON categories.id = rules.category_id
+    #         WHERE (? IS NOT NULL AND merchant_pattern = ?)
+    #            OR (? IS NOT NULL AND description_pattern = ?)
+    #         LIMIT 1
+    #         """,
+    #         (
+    #             merchant_pattern,
+    #             merchant_pattern,
+    #             description_pattern,
+    #             payload.get("description_pattern"),
+    #         ),
+    #     )
+    #     conflict_row = rc.cursor.fetchone()
+    if conflict and not payload.get("replace_existing"):
+        return jsonify({"error": "conflict", "existing": row_to_dict(conflict)}), 409
+    if conflict and payload.get("replace_existing"):
         rc.update_rule(
-            rule_id=conflict_row["id"],
-            name=payload.get("name") or payload.get("merchant_pattern") or "rule",
-            merchant_pattern=payload.get("merchant_pattern"),
-            description_pattern=payload.get("description_pattern"),
+            rule_id=conflict["id"],
+            name=payload.get("name") or merchant_pattern or "rule",
+            merchant_pattern=merchant_pattern,
+            description_pattern=description_pattern,
             category_id=int(category_id),
             subcategory_id=int(subcategory_id) if subcategory_id else None,
             fuzzy_threshold=float(payload.get("fuzzy_threshold", 0.75)),
             priority=int(payload.get("priority", 100)),
         )
-        return jsonify({"id": conflict_row["id"], "replaced": True}), 200
+        return jsonify({"id": conflict["id"], "replaced": True}), 200
     rule_id = rc.add_rule(
-        name=payload.get("name") or payload.get("merchant_pattern") or "rule",
-        merchant_pattern=payload.get("merchant_pattern"),
+        name=payload.get("name") or merchant_pattern or "rule",
+        merchant_pattern=merchant_pattern,
         description_pattern=payload.get("description_pattern"),
         category_id=int(category_id),
         subcategory_id=int(subcategory_id) if subcategory_id else None,
@@ -219,6 +242,10 @@ def categories():
     sc = SubcategoryConnection()
     cats = [row_to_dict(r) for r in cc.list_categories()]
     subs = [row_to_dict(r) for r in sc.list_subcategories()]
+    # Hide the Uncategorised category
+    for cat in cats:
+        if cat['id'] == 1:
+            cats.remove(cat)
     # attach subcategories grouped
     subs_by_cat = {}
     for s in subs:
@@ -230,6 +257,10 @@ def categories():
 
 @app.post("/api/categories")
 def create_category():
+    # How this should work.
+    # Does a category with this name exist? if so return and warn user. Else
+    # If the category doesn't have an assigned colour then assign the category a colour. 
+    # create the category
     payload = request.json or {}
     name = payload.get("name")
     if not name:
@@ -267,9 +298,20 @@ def update_category(category_id: int):
 @app.delete("/api/categories/<int:category_id>")
 def delete_category(category_id: int):
     cc = CategoryConnection()
+    sc = SubcategoryConnection()
+    tc = TransactionsConnection()
+    rc = RulesConnection()
+    subcategories = sc.list_subcategories(category_id)
+    txs = tc.list_transactions(user_id=1, category_id=category_id)
+    rules = rc.list_by_cat(category_id=category_id)
+    for rule in rules:
+        rc.delete_rule(rule['id'])
+    for subcat in subcategories:
+        sc.delete_subcategory(subcat['id'])
+    for tx in txs:
+        tc.update_category(tx_id=tx['id'], category_id=UNCATEGORISED_ID)
     cc.delete_category(category_id)
     return jsonify({"id": category_id})
-
 
 @app.get("/api/subcategories")
 def subcategories():
@@ -284,11 +326,34 @@ def create_subcategory():
     payload = request.json or {}
     name = payload.get("name")
     category_id = payload.get("category_id")
+    colour = payload.get("color")
     if not (name and category_id):
         return jsonify({"error": "name and category_id required"}), 400
+    if not colour:
+        colour = subcategory_colour_gen(category_id)
     sc = SubcategoryConnection()
-    sid = sc.add_subcategory(int(category_id), name, payload.get("color"), float(payload.get("budget", 0) or 0))
+    sid = sc.add_subcategory(int(category_id), name, colour, float(payload.get("budget", 0) or 0))
     return jsonify({"id": sid}), 201
+
+def subcategory_colour_gen(category_id):
+    "We alternate between lightening and darkening subcategory colours. Hence the // and %."
+    colour_diff = 0.15
+    cc = CategoryConnection()
+    sc = SubcategoryConnection()
+    base_colour = cc.get_category_colour(category_id)
+    count = len(sc.list_subcategories(category_id))
+    prev = count // 2
+    # we don't want to count from zero as then the first item would just be the base colour
+    prev = prev + 1 
+    lighten = count % 2
+    rgb = re.findall(r"rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)", base_colour, flags=re.IGNORECASE)[0]
+    new_rgb = []
+    for c in rgb:
+        sign = 1 if lighten else -1
+        mod = int(c) * (prev * colour_diff) * sign 
+        new_c = int(c) + int(mod)
+        new_rgb.append(new_c)
+    return f"rgb({new_rgb[0]},{new_rgb[1]},{new_rgb[2]})"
 
 
 @app.put("/api/subcategories/<int:subcategory_id>")
@@ -306,6 +371,11 @@ def update_subcategory(subcategory_id: int):
 @app.delete("/api/subcategories/<int:subcategory_id>")
 def delete_subcategory(subcategory_id: int):
     sc = SubcategoryConnection()
+    rc = RulesConnection()
+    rules = rc.list_by_cat(subcategory_id=subcategory_id)
+    for rule in rules:
+        if rule['category_id']:
+            rc.delete_rule(rule_id=rule['id'])
     sc.delete_subcategory(subcategory_id)
     return jsonify({"id": subcategory_id})
 
@@ -318,24 +388,25 @@ def reclassify_transactions():
     cc = CategoryConnection()
 
     rules = [Rule.from_row(r) for r in rc.list_rules()]
-    default_category_id = cc.default_category_id
     rows = tc.list_transactions(user_id)
 
     updated = 0
     for row in rows:
         tx = row_to_dict(row)
+        if tx['id'] == 524:
+            print("")
         raw = tx.get("raw_json")
         if isinstance(raw, str):
             try:
                 tx["raw"] = json.loads(raw)
             except Exception:
                 tx["raw"] = {}
-        category_id, category_name, sub_cat_id, sub_cat_name, rule_id, _score = classify_transaction(tx, rules, default_category_id)
+        category_id, category_name, sub_cat_id, sub_cat_name, rule_id, _score = classify_transaction(tx, rules)
         if category_id and category_id != tx.get("category_id"):
             tc.update_category(tx["id"], category_id=category_id, rule_id=rule_id)
             updated += 1
         if sub_cat_id and sub_cat_id != tx.get("subcategory_id"):
-            tc.update_category(tx["id"], subcategory_id=category_id, rule_id=rule_id)
+            tc.update_category(tx["id"], category_id=category_id, subcategory_id=sub_cat_id, rule_id=rule_id)
             updated += 1
 
     return jsonify({"updated": updated})
@@ -391,24 +462,27 @@ def summary():
         sub_join_filters = " AND " + " AND ".join(sub_conditions)
     cur.execute(
         f"""
-        SELECT subcategories.id, subcategories.name, subcategories.budget, subcategories.category_id,
+        SELECT subcategories.id,
+               subcategories.name,
+               subcategories.budget,
+               subcategories.category_id,
+               subcategories.color,
                SUM(COALESCE(transactions.amount,0)) AS spend
         FROM subcategories
         LEFT JOIN transactions ON transactions.subcategory_id = subcategories.id AND transactions.user_id = ? {sub_join_filters}
-        GROUP BY subcategories.id, subcategories.name, subcategories.budget, subcategories.category_id
+        GROUP BY subcategories.id, subcategories.name, subcategories.budget, subcategories.category_id, subcategories.color
         """,
         tuple(sub_params),
     )
     subs = [dict(row) for row in cur.fetchall()]
     # count uncategorized transactions (all time to surface outstanding clean-up)
     # count uncategorized: either NULL/empty or explicitly set to the default "Uncategorized" category
-    default_uncat_id = cc.default_category_id
     cur.execute(
         """
         SELECT COUNT(*) as cnt FROM transactions
         WHERE user_id = ? AND (category_id IS NULL OR category_id = '' OR category_id = ?)
         """,
-        (user_id, default_uncat_id),
+        (user_id, UNCATEGORISED_ID),
     )
     unc_row = cur.fetchone()
     uncategorized_count = unc_row["cnt"] if unc_row else 0
@@ -425,7 +499,7 @@ def sync():
             if account['status'] == "pending":
                 activate_account(account)
         accounts = list_accounts(user_id)
-        result = get_balances_and_transactions(accounts, user_id=user_id)
+        result = asyncio.run(coordinate_sync(accounts, user_id=user_id))
         return jsonify(result)
     except requests.exceptions.HTTPError as http_err:
         status = getattr(http_err.response, "status_code", 500) or 500

@@ -108,6 +108,10 @@
       <div>
         <button id="filter-apply">Apply</button>
       </div>
+      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+        <button id="run-rules-btn" style="background:#16a34a;">Run all rules</button>
+        <span id="run-rules-status" style="font-size:12px; color:#94a3b8;"></span>
+      </div>
     </div>
   </div>
 
@@ -452,6 +456,13 @@
         }
         const catResp = await fetchJson('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
         categoryId = catResp.id;
+        // make the freshly created category selectable for the follow-up save click
+        const newOpt = document.createElement('option');
+        newOpt.value = categoryId;
+        newOpt.textContent = name;
+        const newCatOption = catSelect.querySelector('option[value="__new__"]');
+        catSelect.insertBefore(newOpt, newCatOption);
+        catSelect.value = String(categoryId);
         await loadCategories(); // refresh categories list
       }
       if (!categoryId) {
@@ -468,6 +479,13 @@
         }
         const subResp = await fetchJson('/api/subcategories', { method: 'POST', body: JSON.stringify({ name: subName, category_id: parseInt(categoryId, 10) }) });
         subcategoryId = subResp.id;
+        // add new subcategory to the selector so the second save won't recreate it
+        const newSubOpt = document.createElement('option');
+        newSubOpt.value = subcategoryId;
+        newSubOpt.textContent = subName;
+        const newSubOption = subSelect.querySelector('option[value="__new__"]');
+        subSelect.insertBefore(newSubOpt, newSubOption);
+        subSelect.value = String(subcategoryId);
         await loadCategories();
       } else {
         subcategoryId = subcategoryId ? parseInt(subcategoryId, 10) : null;
@@ -564,6 +582,25 @@
     });
     document.getElementById('prev-page').addEventListener('click', () => { if (currentPage > 1) { currentPage -= 1; applyFilters(); } });
     document.getElementById('next-page').addEventListener('click', () => { const total = (window._transactions || []).length; if (currentPage * pageSize < total) { currentPage += 1; applyFilters(); } });
+
+    // Run all rules across transactions
+    document.getElementById('run-rules-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('run-rules-btn');
+      const status = document.getElementById('run-rules-status');
+      try {
+        btn.disabled = true;
+        status.textContent = 'Running rules...';
+        await fetchJson('/api/reclassify', { method: 'POST', body: JSON.stringify({ user_id: 1 }) });
+        status.textContent = 'Completed. Refreshing...';
+        await loadTransactions();
+        status.textContent = 'Done';
+        setTimeout(() => { status.textContent = ''; }, 2000);
+      } catch (err) {
+        status.textContent = `Failed: ${err.message}`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     loadCategories().then(loadTransactions);
   </script>

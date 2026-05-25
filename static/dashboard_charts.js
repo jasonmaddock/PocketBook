@@ -23,7 +23,20 @@ async function loadSummaryAndRender(query = "") {
 function renderCharts(summary) {
   const ctxPie = document.getElementById('pie-spend')?.getContext('2d');
   const ctxBar = document.getElementById('bar-budgets')?.getContext('2d');
-  const palette = ["#ef4444", "#f97316", "#f59e0b", "#eab308", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "#6366f1", "#8b5cf6", "#ec4899", "#f973ab"];
+  const palette = [
+    "rgb(239,68,68)",
+    "rgb(249,115,22)",
+    "rgb(245,158,11)",
+    "rgb(234,179,8)",
+    "rgb(34,197,94)",
+    "rgb(20,184,166)",
+    "rgb(6,182,212)",
+    "rgb(59,130,246)",
+    "rgb(99,102,241)",
+    "rgb(139,92,246)",
+    "rgb(236,72,153)",
+    "rgb(249,115,171)",
+  ];
   const labels = (summary.categories || []).map(c => c.name);
   const spend = (summary.categories || []).map(c => Math.abs(Number(c.spend || 0)));
   const colors = (summary.categories || []).map((c, idx) => c.color || palette[idx % palette.length]);
@@ -39,7 +52,7 @@ function renderCharts(summary) {
       name: s.name,
       budget: Number(s.budget || 0),
       spend: Math.abs(Number(s.spend || 0)),
-      color: palette[(idx + 5) % palette.length],
+      color: s.color || palette[(idx + 5) % palette.length],
     })),
   ];
 
@@ -48,7 +61,7 @@ function renderCharts(summary) {
     pieChart = new Chart(ctxPie, {
       type: 'pie',
       data: { labels, datasets: [{ data: spend, backgroundColor: colors }] },
-      options: { plugins: { legend: { labels: { color: '#e2e8f0' } } } }
+      options: { plugins: { legend: { labels: { color: 'rgb(226,232,240)' } } } }
     });
   }
 
@@ -68,10 +81,10 @@ function renderCharts(summary) {
         ],
       },
       options: {
-        plugins: { legend: { labels: { color: '#e2e8f0' } } },
+        plugins: { legend: { labels: { color: 'rgb(226,232,240)' } } },
         scales: {
-          x: { ticks: { color: '#e2e8f0' } },
-          y: { ticks: { color: '#e2e8f0' } }
+          x: { ticks: { color: 'rgb(226,232,240)' } },
+          y: { ticks: { color: 'rgb(226,232,240)' } }
         }
       }
     });
@@ -106,7 +119,7 @@ function renderCharts(summary) {
       if (!ctx) return;
       const subLabels = subs.map(s => s.name);
       const subSpend = subs.map(s => Math.abs(Number(s.spend || 0)));
-      const subColors = subs.map((s, idx) => tweakColor(baseColor, idx));
+      const subColors = subs.map((s, idx) => s.color || baseColor || palette[idx % palette.length]);      
       const totalSpend = catSpendMap[cat.id] || subSpend.reduce((a, b) => a + b, 0);
       const subtotal = subSpend.reduce((a, b) => a + b, 0);
       const noneSlice = Math.max(totalSpend - subtotal, 0);
@@ -118,7 +131,7 @@ function renderCharts(summary) {
       subCharts[cat.id] = new Chart(ctx, {
         type: 'pie',
         data: { labels: subLabels, datasets: [{ data: subSpend, backgroundColor: subColors }] },
-        options: { plugins: { legend: { labels: { color: '#e2e8f0' } } } }
+        options: { plugins: { legend: { labels: { color: 'rgb(226,232,240)' } } } }
       });
     });
   }
@@ -133,7 +146,7 @@ function randomColor() {
 
 // Simple lighter variation generator
 function tweakColor(hex, step = 0) {
-  if (!hex || !hex.startsWith('#') || hex.length !== 7) return hex || '#3b82f6';
+  if (!hex || !hex.startsWith('#') || hex.length !== 7) return hex || 'rgb(59,130,246)';
   const num = parseInt(hex.slice(1), 16);
   let r = (num >> 16) & 0xff;
   let g = (num >> 8) & 0xff;

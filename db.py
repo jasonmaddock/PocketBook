@@ -85,34 +85,26 @@ CREATE TABLE IF NOT EXISTS rules(
     FOREIGN KEY(category_id) REFERENCES categories(id)
 );
 """
-
+"""
+DEBUG DB
+import sqlite3
+DB_PATH = os.getenv("POCKETBOOK_DB", "pocket.db")
+con = sqlite3.connect(DB_PATH)
+con.row_factory = sqlite3.Row
+cursor = con.cursor()
+"""
 
 class Db:
-    def __init__(self):
-        self.con = sqlite3.connect(DB_PATH)
+    def __init__(self, db_path=DB_PATH):
+        self.con = sqlite3.connect(db_path)
         self.con.row_factory = sqlite3.Row
         self.cursor = self.con.cursor()
-        self._ensure_tables()
+    
+    table_name = ""
 
-    def _ensure_tables(self):
-        for ddl in (TOKENS_TABLE, ACCOUNTS_TABLE, TRANSACTIONS_TABLE, CATEGORIES_TABLE, SUBCATEGORIES_TABLE, RULES_TABLE):
-            self.cursor.execute(ddl)
-        self.con.commit()
-        # add status column to accounts if missing (legacy DBs)
-        self.cursor.execute("PRAGMA table_info(accounts)")
-        cols = [row["name"] for row in self.cursor.fetchall()]
-        if "status" not in cols:
-            self.cursor.execute("ALTER TABLE accounts ADD COLUMN status TEXT DEFAULT 'pending'")
-            self.con.commit()
-        self._ensure_default_category()
-
-    def _ensure_default_category(self):
-        # Ensure there is at least an Uncategorized category
-        self.cursor.execute("SELECT id FROM categories WHERE name = ?", ("Uncategorized",))
-        row = self.cursor.fetchone()
-        if not row:
-            self.cursor.execute("INSERT INTO categories (name, color) VALUES (?, ?)", ("Uncategorized", "#6b7280"))
-            self.con.commit()
+    def all_records(self):
+        self.cursor.execute(f"SELECT * from {self.table_name}")
+        return self.cursor.fetchall()
 
 
 class TokensConnection(Db):
@@ -228,8 +220,8 @@ class AccountsConnection(Db):
 
     def activate_account(self, req_id: str, provider_account_id: str):
         self.cursor.execute(
-            "UPDATE accounts SET status = 'active' WHERE req_id = ?, provider_account_id = ?",
-            (provider_account_id, req_id),
+            "UPDATE accounts SET status = 'active' WHERE req_id = ? AND provider_account_id = ?",
+            (req_id, provider_account_id),
         )
         self.con.commit()
 
@@ -263,6 +255,11 @@ class CategoryConnection(Db):
     def delete_category(self, category_id: int):
         self.cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
         self.con.commit()
+
+    def get_category_colour(self, category_id: int) -> str: 
+        self.cursor.execute("SELECT color FROM categories WHERE id = ?", (category_id,))
+        row = self.cursor.fetchone()
+        return row["color"] if row else None
 
     @property
     def default_category_id(self) -> int:
@@ -333,6 +330,25 @@ class RulesConnection(Db):
         )
         return self.cursor.fetchall()
 
+    def list_by_cat(self, category_id = None, subcategory_id= None):
+        clauses = []
+        params = []
+        if category_id or subcategory_id:
+            clauses.append(" WHERE")
+            if category_id and not subcategory_id:
+                clauses.append(" category_id = ?")
+                params.append(category_id)
+            elif subcategory_id and not category_id:
+                clauses.append(" subcategory_id = ?")
+                params.append(subcategory_id)
+            else:
+                clauses.append(" category_id = ? AND subcategory_id = ?")
+                params.extend([category_id, subcategory_id])
+
+        statement = "".join(["SELECT * FROM rules", *clauses, ";"])
+        self.cursor.execute(statement, tuple(params))
+        return self.cursor.fetchall()
+
     def update_rule(
         self,
         rule_id: int,
@@ -358,8 +374,16 @@ class RulesConnection(Db):
         self.cursor.execute("DELETE FROM rules WHERE id = ?", (rule_id,))
         self.con.commit()
 
+    def conflict(self, merchant_pattern: str, description_pattern: str) -> list:
+        # Return any rule that matches either the merchant or description pattern
+        self.cursor.execute(
+            "SELECT * FROM rules WHERE (merchant_pattern = ?) OR (description_pattern = ?) LIMIT 1",
+            (merchant_pattern, description_pattern),
+        )
+        return self.cursor.fetchone()
 
 class TransactionsConnection(Db):
+    table_name = "transactions"
     def add_transactions(self, account_id: int, user_id: int, transactions: Sequence[dict]):
         rows: List[Tuple] = []
         for t in transactions:
@@ -373,14 +397,14 @@ class TransactionsConnection(Db):
                     t["date"],
                     t.get("merchant"),
                     t.get("description"),
-                    t.get("category_id"),
+                    t.get("category_id") or 1,
                     t.get("subcategory_id"),
                     t.get("rule_id"),
                     json.dumps(t.get("raw", {})),
                 )
             )
 
-        self.cursor.executemany(
+        response = self.cursor.executemany(
             """
             INSERT OR IGNORE INTO transactions
             (provider_id, account_id, user_id, amount, currency, date, merchant, description, category_id, subcategory_id, rule_id, raw_json)
@@ -390,7 +414,7 @@ class TransactionsConnection(Db):
         )
         self.con.commit()
 
-    def list_transactions(self, user_id: int, from_dt: str = None, to_dt: str = None):
+    def list_transactions(self, user_id: int, from_dt: str = None, to_dt: str = None, category_id: str = None):
         clauses = ["transactions.user_id = ?"]
         params = [user_id]
         if from_dt:
@@ -399,6 +423,9 @@ class TransactionsConnection(Db):
         if to_dt:
             clauses.append("transactions.date <= ?")
             params.append(to_dt)
+        if category_id:
+            clauses.append("transactions.category_id = ?")
+            params.append(category_id)
         where_clause = " AND ".join(clauses)
         self.cursor.execute(
             f"""

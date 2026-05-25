@@ -13,3 +13,4 @@ db_schema.md
 # Local env files
 dev.env
 .env
+test_trans.json

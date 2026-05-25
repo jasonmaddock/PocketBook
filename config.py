@@ -29,6 +29,9 @@ GOCARDLESS_SECRET_KEY = os.getenv("GOCARDLESS_SECRET_KEY", "")
 GOCARDLESS_SECRET_ID = os.getenv("GOCARDLESS_SECRET_ID", "")
 ALLOW_DUMMY = os.getenv("POCKETBOOK_ALLOW_DUMMY_SECRETS")
 
+UNCATEGORISED_ID = 1
+UNCATEGORISED_NAME = "Uncatergorized"
+
 if not (GOCARDLESS_SECRET_KEY and GOCARDLESS_SECRET_ID):
     # Default to dummy values for tests/dev; real API calls will fail until env vars are set.
     GOCARDLESS_SECRET_KEY = GOCARDLESS_SECRET_KEY or "DUMMY"

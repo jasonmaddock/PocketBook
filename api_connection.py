@@ -4,6 +4,9 @@ import requests
 import config
 from typing import Any, Dict
 
+import aiohttp
+import asyncio
+
 BASE_API_URL = "https://bankaccountdata.gocardless.com/api/v2/"
 SECRET_ID = config.GOCARDLESS_SECRET_ID
 SECRET_KEY = config.GOCARDLESS_SECRET_KEY
@@ -89,15 +92,18 @@ class ApiConnection:
         return cls._parse_response(r)
     
     @classmethod
-    def get_balance_and_transactions(cls, account_id, access_token):
+    async def get_balance_and_transactions(cls, account_id, access_token):
         results = {"balances": None, "transactions": None}
-        for k in results.keys():
-            url = BASE_API_URL + f"accounts/{account_id}/{k}/"
-            headers = {
-                "accept": "application/json",
-                "Authorization": f"Bearer {access_token}",
-            }
-            r = requests.get(url=url, headers=headers, timeout=10)
-            results[k] = cls._parse_response(r)[k]
-        return results
+        async with aiohttp.ClientSession() as session:
+            for k in results.keys():
+                url = BASE_API_URL + f"accounts/{account_id}/{k}/"
+                headers = {
+                    "accept": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                }
+                async with session.get(url=url, headers=headers, ssl=False, timeout=aiohttp.ClientTimeout(total=10)) as r:
+                    r.raise_for_status()
+                    data = await r.json()
+                results[k] = data[k]
+            return {"account_id": account_id, "response": results}
     
