@@ -66,11 +66,11 @@
           <td>${acc.status || 'active'}</td>
           <td>${acc.balance || ''}</td>
           <td>${acc.balance_dt || ''}</td>
-          <td><button data-del="${acc.account_id}">Delete</button><button refresh-req="${acc.account_id}">Renew Access</button></td>
+          <td><button data-del="${acc.account_id}">Delete</button><button refresh-req="${acc.account_id}">Renew Access</button><button sync-bank="${acc.account_id}">Sync This Bank</button></td>
         `;
         tr.querySelector('button[data-del]').addEventListener('click', () => deleteAccount(acc.account_id));
         tr.querySelector('button[refresh-req]').addEventListener('click', () => startLink(acc.bank_id));
-        tr.querySelector('button[sync-bank]').addEventListener('click', () => syncBank(acc.account_id));
+        tr.querySelector('button[sync-bank]').addEventListener('click', () => syncBank(acc.provider_account_id));
         tbody.appendChild(tr);
       });
       if (!data.length) {
@@ -131,6 +131,14 @@
         await loadAccounts();
       } catch (err) {
         alert('Failed to delete account: ' + err.message);
+      }
+    }
+
+    async function syncBank(accountId) {
+      try {
+        await fetchJson('/api/sync', {method: 'POST', body: JSON.stringify({user_id: 1, provider_account_id: accountId})});
+      } catch (err) {
+        alert('Sync failed: ' + err.message);
       }
     }
 

@@ -493,8 +493,11 @@ def summary():
 @app.post("/api/sync")
 def sync():
     user_id = int((request.json or {}).get("user_id", 1))
+    account_id = (request.json or {}).get("provider_account_id", None)
     try:
         potential_accounts = list_accounts(user_id)
+        if account_id:
+            potential_accounts = [acc for acc in potential_accounts if acc['provider_account_id'] == account_id]
         accounts = []
         for account in potential_accounts:
             if account['status'] == "pending":
