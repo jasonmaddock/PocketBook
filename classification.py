@@ -25,7 +25,7 @@ class Rule:
             merchant_pattern=row["merchant_pattern"],
             description_pattern=row["description_pattern"],
             category_id=row["category_id"],
-            category_name=(row["category_name"] if "category_name" in row.keys() else None) or "Uncategorized",
+            category_name=(row["category_name"] if "category_name" in row.keys() else None) or "Uncategorised",
             subcategory_id=row["subcategory_id"] if "subcategory_id" in row.keys() else None,
             subcategory_name=row["subcategory_name"] if "subcategory_name" in row.keys() else None,
             fuzzy_threshold=row["fuzzy_threshold"],
@@ -49,8 +49,6 @@ def classify_transaction(tx: dict, rules: Iterable[Rule]) -> Tuple[Optional[int]
     description = (tx.get("description") or "").strip()
 
     for rule in sorted(rules, key=lambda r: (r.priority, r.id or 0)):
-        if rule.name == "WAITROSE" and tx['id'] == 524:
-            print("")
         scores: List[float] = []
         merchant_score = _score(rule.merchant_pattern, merchant)
         desc_score = _score(rule.description_pattern, description)

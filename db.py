@@ -110,6 +110,7 @@ class Db:
 class TokensConnection(Db):
     add_token_sql = """INSERT INTO tokens (token_type, token, valid_for, created_dt)
                        VALUES (?, ?, ?, ?)"""
+    table_name = "tokens"
 
     @property
     def access_token(self) -> str:
@@ -163,15 +164,22 @@ class AccountsConnection(Db):
         self.cursor.execute("SELECT account_id FROM accounts WHERE provider_account_id = ? AND status = 'active'", (provider_account_id,))
         existing = self.cursor.fetchone()
         if existing:
-            return
-        self.cursor.execute(
-            """
-            INSERT INTO accounts (user_id, bank_id, eua_id, req_id, provider_account_id, status, valid_til)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, bank_id, eua_id, req_id, provider_account_id, status, valid_til),
-        )
-        self.con.commit()
+            self.cursor.execute(
+                """
+                UPDATE accounts SET eua_id = ?, req_id = ?, status = ?, valid_til = ? WHERE provider_account_id = ?
+                """,
+                (eua_id, req_id, status, valid_til, provider_account_id),
+            )
+            self.con.commit()
+        else:
+            self.cursor.execute(
+                """
+                INSERT INTO accounts (user_id, bank_id, eua_id, req_id, provider_account_id, status, valid_til)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, bank_id, eua_id, req_id, provider_account_id, status, valid_til),
+            )
+            self.con.commit()
 
     def retrieve_accounts(self, user_id: int = 1, pending_only: bool = False):
         if pending_only:
@@ -263,7 +271,7 @@ class CategoryConnection(Db):
 
     @property
     def default_category_id(self) -> int:
-        self.cursor.execute("SELECT id FROM categories WHERE name = ?", ("Uncategorized",))
+        self.cursor.execute("SELECT id FROM categories WHERE name = ?", ("Uncategorised",))
         row = self.cursor.fetchone()
         return row["id"] if row else 1
 

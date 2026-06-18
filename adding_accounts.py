@@ -58,6 +58,12 @@ def list_accounts(user_id=1, pending_only: bool = False):
     acc = AccountsConnection()
     return acc.retrieve_accounts(user_id, pending_only=pending_only)
 
+def expired_account(account):
+    dt = datetime.now()
+    valid_til = datetime.strptime(account["valid_til"], "%Y-%m-%d %H:%M:%S")
+    return dt > valid_til
+
+
 def activate_account(account):
     con = TokensConnection()
     acc = AccountsConnection()
@@ -79,23 +85,18 @@ def activate_account(account):
 
 
 def _normalize_transaction(raw: dict) -> Dict:
-    try:
-        amount_info = raw.get("transactionAmount") or raw.get("transacitonAmount") or {}
-        amount = amount_info.get("amount", 0.0)
-        currency = amount_info.get("currency", "")
-        if not raw.get("internalTransactionId") and not raw.get("transactionId"):
-            print("test")
-        return {
-            "provider_id": raw.get("internalTransactionId") or raw.get("transactionId"),
-            "amount": amount,
-            "currency": currency,
-            "date": raw.get("bookingDate") or raw.get("valueDate"),
-            "merchant": raw.get("creditorName") or raw.get("debtorName"),
-            "description": raw.get("remittanceInformationUnstructured") or raw.get("additionalInformation"),
-            "raw": raw,
-        }
-    except:
-        print("test")
+    amount_info = raw.get("transactionAmount") or raw.get("transacitonAmount") or {}
+    amount = amount_info.get("amount", 0.0)
+    currency = amount_info.get("currency", "")
+    return {
+        "provider_id": raw.get("internalTransactionId") or raw.get("transactionId"),
+        "amount": amount,
+        "currency": currency,
+        "date": raw.get("bookingDate") or raw.get("valueDate"),
+        "merchant": raw.get("creditorName") or raw.get("debtorName"),
+        "description": raw.get("remittanceInformationUnstructured") or raw.get("additionalInformation"),
+        "raw": raw,
+    }
 
 
 async def get_balances_and_transactions(account_list, user_id=1):
@@ -115,75 +116,35 @@ async def get_balances_and_transactions(account_list, user_id=1):
 
 def unpack_balances_and_transactions(response):
     balance_amount = float(response['response']["balances"][0]["balanceAmount"]["amount"])
-    booked = response["transactions"].get("booked", [])
-    pending = response["transactions"].get("pending", [])
+    booked = response['response']["transactions"].get("booked", [])
+    pending = response['response']["transactions"].get("pending", [])
     normalised = [_normalize_transaction(t) for t in booked + pending]
     return {"account_id": response["account_id"], "balance": balance_amount, "transactions": normalised}
 
+def handle_balance_and_trans_response(response, rules):
+    normalised = unpack_balances_and_transactions(response)
+    classified = apply_rules(normalised["transactions"], rules)
+    return normalised, classified
+
+def add_balance_and_trans(normalised, classified, user_id, tx_con, acc_con):
+    acc_con.add_balance(normalised["account_id"], normalised["balance"])
+    tx_con.add_transactions(normalised["account_id"], user_id, classified)
+
 async def coordinate_sync(account_list, user_id=1):
-    tra = TransactionsConnection()
+    tx_con = TransactionsConnection()
+    acc_con = AccountsConnection()
     rules_con = RulesConnection()
     rules = [Rule.from_row(r) for r in rules_con.list_rules()]
     balances_and_transactions = {}
     responses = await get_balances_and_transactions(account_list, user_id=1)
     for r in responses:
-        normalised = unpack_balances_and_transactions(r)
-        classified = apply_rules(normalised["transactions"], rules)
-        tra.add_transactions(r["account_id"], user_id, classified)
-        balances_and_transactions[r["account_id"]] = {
-            "balance": r["balance"],
+        normalised, classified = handle_balance_and_trans_response(r, rules)
+        add_balance_and_trans(normalised, classified, user_id, tx_con, acc_con)
+        balances_and_transactions[normalised["account_id"]] = {
+            "balance": normalised["balance"],
             "transactions": classified,
         }
     return {"accounts": balances_and_transactions, "errors": []}
-
-async def get_balances_and_transactions_old(account_list, user_id=1):
-    # con = TokensConnection()
-    acc = AccountsConnection()
-    tra = TransactionsConnection()
-    rules_con = RulesConnection()
-    # access_token = con.access_token
-
-    # Convert DB rows to Rule objects for classification
-    rules = [Rule.from_row(r) for r in rules_con.list_rules()]
-
-    balances_and_transactions = {}
-    errors: List[dict] = []
-    logger.info("Fetching balances and transactions")
-    tasks = [ApiConnection.get_balance_and_transactions(a['provider_account_id'], access_token) for a in account_list]
-    account_ids = [a['provider_account_id']for a in account_list]
-    responses = await asyncio.gather(*tasks, return_exceptions=True)
-    for response, account_id in zip(responses, account_ids):
-        # if str(response.code)[0] != 2:
-        #     logger.error(f"Failed to fetch for {account_id}. {response.code} - {response.message}")
-        #     continue
-        try:
-            # logger.info(f"Successful fetch for {account_id}")
-            balance_amount = float(response["balances"][0]["balanceAmount"]["amount"])
-            acc.add_balance(account_id, balance_amount)
-
-            booked = response["transactions"].get("booked", [])
-            pending = response["transactions"].get("pending", [])
-            normalized = [_normalize_transaction(t) for t in booked + pending]
-            classified = apply_rules(normalized, rules)
-            tra.add_transactions(account_id, user_id, classified)
-            balances_and_transactions[account_id] = {
-                "balance": balance_amount,
-                "transactions": classified,
-            }
-        except aiohttp.ClientResponseError as err:
-            status = getattr(err.response, "status_code", None)
-            errors.append(
-                {"account_id": account_id, "status": status, "error": str(err)}
-            )
-            continue
-        except Exception as exc:
-            errors.append(
-                {"account_id": account_id, "status": None, "error": str(exc)}
-            )
-            continue
-    logger.info(f"Balances and transactions returned.")
-    return {"accounts": balances_and_transactions, "errors": errors}
-
 
 if __name__ == "__main__":
     list_accounts()

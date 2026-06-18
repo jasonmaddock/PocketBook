@@ -7,7 +7,7 @@ import re
 
 from flask import Flask, jsonify, request, render_template
 
-from adding_accounts import activate_account, list_accounts, coordinate_sync, generate_bank_list, create_requisition
+from adding_accounts import activate_account, list_accounts, coordinate_sync, generate_bank_list, create_requisition, expired_account
 from db import AccountsConnection, TransactionsConnection, RulesConnection, CategoryConnection, SubcategoryConnection
 from classification import Rule, classify_transaction
 import requests
@@ -476,7 +476,7 @@ def summary():
     )
     subs = [dict(row) for row in cur.fetchall()]
     # count uncategorized transactions (all time to surface outstanding clean-up)
-    # count uncategorized: either NULL/empty or explicitly set to the default "Uncategorized" category
+    # count uncategorized: either NULL/empty or explicitly set to the default "Uncategorised" category
     cur.execute(
         """
         SELECT COUNT(*) as cnt FROM transactions
@@ -494,13 +494,19 @@ def summary():
 def sync():
     user_id = int((request.json or {}).get("user_id", 1))
     try:
-        pending_accounts = list_accounts(user_id, pending_only=True)
-        for account in pending_accounts:
+        potential_accounts = list_accounts(user_id)
+        accounts = []
+        for account in potential_accounts:
             if account['status'] == "pending":
                 activate_account(account)
-        accounts = list_accounts(user_id)
-        result = asyncio.run(coordinate_sync(accounts, user_id=user_id))
-        return jsonify(result)
+            if expired_account(account):
+                continue
+            accounts.append(account)
+        if accounts:
+            result = asyncio.run(coordinate_sync(accounts, user_id=user_id))
+            return jsonify(result)
+        else:
+            return jsonify({"error": "No valid accounts"}), 500
     except requests.exceptions.HTTPError as http_err:
         status = getattr(http_err.response, "status_code", 500) or 500
         return jsonify({"error": str(http_err)}), status

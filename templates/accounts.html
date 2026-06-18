@@ -66,9 +66,11 @@
           <td>${acc.status || 'active'}</td>
           <td>${acc.balance || ''}</td>
           <td>${acc.balance_dt || ''}</td>
-          <td><button data-del="${acc.account_id}">Delete</button></td>
+          <td><button data-del="${acc.account_id}">Delete</button><button refresh-req="${acc.account_id}">Renew Access</button></td>
         `;
         tr.querySelector('button[data-del]').addEventListener('click', () => deleteAccount(acc.account_id));
+        tr.querySelector('button[refresh-req]').addEventListener('click', () => startLink(acc.bank_id));
+        tr.querySelector('button[sync-bank]').addEventListener('click', () => syncBank(acc.account_id));
         tbody.appendChild(tr);
       });
       if (!data.length) {

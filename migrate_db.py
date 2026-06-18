@@ -6,7 +6,7 @@ Run: python3 migrate_db.py
 
 It will:
 - Create missing tables (categories, rules).
-- Ensure a default 'Uncategorized' category exists.
+- Ensure a default 'Uncategorised' category exists.
 - Add any missing columns to accounts/transactions.
 - Convert legacy rule/transaction category text into category IDs.
 - Upgrade legacy tokens table shape if needed.
@@ -39,7 +39,7 @@ def ensure_categories(cur) -> Dict[str, int]:
     )
     if not has_column(cur, "categories", "budget"):
         cur.execute("ALTER TABLE categories ADD COLUMN budget REAL DEFAULT 0")
-    cur.execute("INSERT OR IGNORE INTO categories (name, color, budget) VALUES (?, ?, ?)", ("Uncategorized", "#6b7280", 0))
+    cur.execute("INSERT OR IGNORE INTO categories (name, color, budget) VALUES (?, ?, ?)", ("Uncategorised", "#6b7280", 0))
     cur.connection.commit()
 
     cur.execute("SELECT id, name FROM categories")
@@ -120,7 +120,7 @@ def migrate_rules(cur, category_ids: Dict[str, int]):
     if has_column(cur, "rules", "category"):
         cur.execute("SELECT id, category FROM rules WHERE category_id IS NULL OR category_id = ''")
         for row in cur.fetchall():
-            cid = category_ids.get(row["category"]) or category_ids["Uncategorized"]
+            cid = category_ids.get(row["category"]) or category_ids["Uncategorised"]
             cur.execute("UPDATE rules SET category_id = ? WHERE id = ?", (cid, row["id"]))
     cur.connection.commit()
 
@@ -153,7 +153,7 @@ def migrate_transactions(cur, category_ids: Dict[str, int]):
     if has_column(cur, "transactions", "category"):
         cur.execute("SELECT id, category FROM transactions WHERE category_id IS NULL")
         for row in cur.fetchall():
-            cid = category_ids.get(row["category"]) or category_ids["Uncategorized"]
+            cid = category_ids.get(row["category"]) or category_ids["Uncategorised"]
             cur.execute("UPDATE transactions SET category_id = ? WHERE id = ?", (cid, row["id"]))
     cur.connection.commit()
 

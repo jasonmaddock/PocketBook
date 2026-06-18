@@ -26,4 +26,4 @@ def test_apply_rules_marks_uncategorized():
     rules = []
     txs = [{"merchant": "Unknown shop", "description": "some thing"}]
     enriched = apply_rules(txs, rules)
-    assert enriched[0]["category"] == "Uncategorized"
+    assert enriched[0]["category"] == "Uncategorised"
