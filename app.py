@@ -7,7 +7,7 @@ import re
 
 from flask import Flask, jsonify, request, render_template
 
-from adding_accounts import activate_account, list_accounts, coordinate_sync, generate_bank_list, create_requisition, expired_account
+from adding_accounts import activate_account, list_accounts, get_account, coordinate_sync, generate_bank_list, create_requisition, expired_account
 from db import AccountsConnection, TransactionsConnection, RulesConnection, CategoryConnection, SubcategoryConnection
 from classification import Rule, classify_transaction
 import requests
@@ -177,7 +177,7 @@ def delete_rule(rule_id: int):
 def accounts():
     user_id = int(request.args.get("user_id", 1))
     ac = AccountsConnection()
-    rows = ac.retrieve_accounts(user_id)
+    rows = ac.retrieve_all_user_accounts(user_id)
     deduped = {}
     pending_counter = {}
 
@@ -422,7 +422,7 @@ def summary():
     sc = SubcategoryConnection()
 
     # Balances
-    accounts = ac.retrieve_accounts(user_id)
+    accounts = ac.retrieve_all_user_accounts(user_id)
     total_balance = sum(float(a["balance"] or 0) for a in accounts)
 
     # Spend per category
@@ -490,21 +490,31 @@ def summary():
     return jsonify({"total_balance": total_balance, "categories": cats, "subcategories": subs, "uncategorized_count": uncategorized_count})
 
 
+def retrieve_sync_accounts(user_id, req_id, provider_account_id):
+    if req_id and provider_account_id:
+        return get_account(provider_account_id=provider_account_id, user_id=user_id)
+    elif req_id:
+        potential_accounts = get_account(req_id=req_id, user_id=user_id)
+    else:
+        potential_accounts = list_accounts(user_id)
+    accounts = []
+    for acc in potential_accounts:
+        if acc['status'] == "pending":
+            accounts += activate_account(acc)
+        elif expired_account(acc):
+            continue
+        else:
+            accounts.append(acc)
+
+    
+
 @app.post("/api/sync")
 def sync():
     user_id = int((request.json or {}).get("user_id", 1))
-    account_id = (request.json or {}).get("provider_account_id", None)
+    req_id = (request.json or {}).get("req_id", None)
+    provider_account_id = (request.json or {}).get("provider_account_id", None)
     try:
-        potential_accounts = list_accounts(user_id)
-        if account_id:
-            potential_accounts = [acc for acc in potential_accounts if acc['provider_account_id'] == account_id]
-        accounts = []
-        for account in potential_accounts:
-            if account['status'] == "pending":
-                activate_account(account)
-            if expired_account(account):
-                continue
-            accounts.append(account)
+        accounts = retrieve_sync_accounts(user_id, req_id, provider_account_id)
         if accounts:
             result = asyncio.run(coordinate_sync(accounts, user_id=user_id))
             return jsonify(result)

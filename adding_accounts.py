@@ -56,7 +56,17 @@ def create_requisition(bank_id, user_id=1):
 
 def list_accounts(user_id=1, pending_only: bool = False):
     acc = AccountsConnection()
-    return acc.retrieve_accounts(user_id, pending_only=pending_only)
+    return acc.retrieve_all_user_accounts(user_id, pending_only=pending_only)
+
+def get_account(provider_account_id: str = "", user_id: int = 1, req_id: str = ""):
+    acc = AccountsConnection()
+    if provider_account_id:
+        return acc.get_account_by_pai(provider_account_id, user_id)
+    elif req_id:
+        return acc.get_pending_account_by_req(req_id, user_id)
+    else:
+        return
+
 
 def expired_account(account):
     dt = datetime.now()
@@ -70,6 +80,7 @@ def activate_account(account):
     access_token = con.access_token
     api_account = ApiConnection.retrieve_accounts(account["req_id"], access_token)
     provider_account_ids = api_account['accounts']
+    accounts = []
     for id in provider_account_ids:
         acc.store_account_info(
             account['user_id'],
@@ -80,7 +91,9 @@ def activate_account(account):
             id,
             "active"
             )
+        accounts += get_account(provider_account_id=id)
     acc.delete_account(account['account_id'])
+    return accounts
 
 
 

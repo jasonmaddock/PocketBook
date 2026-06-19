@@ -181,7 +181,7 @@ class AccountsConnection(Db):
             )
             self.con.commit()
 
-    def retrieve_accounts(self, user_id: int = 1, pending_only: bool = False):
+    def retrieve_all_user_accounts(self, user_id: int = 1, pending_only: bool = False):
         if pending_only:
             self.cursor.execute(
                 "SELECT * FROM accounts WHERE user_id = ? AND status = 'pending'",
@@ -191,6 +191,21 @@ class AccountsConnection(Db):
             self.cursor.execute("SELECT * FROM accounts WHERE user_id = ?", (user_id,))
         return self.cursor.fetchall()
     
+    def get_account_by_pai(self, provider_account_id: str, user_id: int = 1):
+            self.cursor.execute(
+                "SELECT * FROM accounts WHERE provider_account_id = ? AND user_id = ?",
+                (provider_account_id, user_id)
+            )
+            return self.cursor.fetchall()
+
+    def get_pending_account_by_req(self, req_id: str, user_id: int = 1):
+            self.cursor.execute(
+                "SELECT * FROM accounts WHERE req_id = ? AND user_id = ? AND status = 'pending'",
+                (req_id, user_id)
+            )
+            return self.cursor.fetchall()
+
+
     def add_balance(self, provider_account_id: str, balance: float):
         dt = datetime.now().strftime(DATE_FMT)
         self.cursor.execute(

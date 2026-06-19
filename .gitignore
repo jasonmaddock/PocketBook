@@ -5,6 +5,7 @@ launch.json
 
 # Local data
 pocket.db
+pocket.db.bak
 test.db
 
 # Docs generated locally

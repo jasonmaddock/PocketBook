@@ -18,8 +18,3 @@ PocketBook — minimal GoCardless-backed personal finance dashboard with rule-ba
 - POST `/api/rules` with `merchant_pattern` and/or `description_pattern`, `category`, optional `priority`/`fuzzy_threshold`.
 - Rules are evaluated in priority order (lower = earlier). Substring match wins; otherwise fuzzy ratio must meet `fuzzy_threshold`.
 - Uncategorised transactions remain tagged as `"Uncategorised"` for later review.
-
-## Notes
-- Secrets are no longer hard-coded; ensure env vars are set before running.
-- Schema is auto-created on startup (tokens, accounts, transactions, rules). Accounts store provider account IDs once synced.
-- Tests: `python3 -m pytest`.

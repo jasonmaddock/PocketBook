@@ -64,13 +64,13 @@
           <td>${acc.req_id || ''}</td>
           <td>${acc.provider_account_id || ''}</td>
           <td>${acc.status || 'active'}</td>
-          <td>${acc.balance || ''}</td>
+          <td>${acc.balance}</td>
           <td>${acc.balance_dt || ''}</td>
           <td><button data-del="${acc.account_id}">Delete</button><button refresh-req="${acc.account_id}">Renew Access</button><button sync-bank="${acc.account_id}">Sync This Bank</button></td>
         `;
         tr.querySelector('button[data-del]').addEventListener('click', () => deleteAccount(acc.account_id));
         tr.querySelector('button[refresh-req]').addEventListener('click', () => startLink(acc.bank_id));
-        tr.querySelector('button[sync-bank]').addEventListener('click', () => syncBank(acc.provider_account_id));
+        tr.querySelector('button[sync-bank]').addEventListener('click', () => syncBank(acc.provider_account_id, acc.req_id));
         tbody.appendChild(tr);
       });
       if (!data.length) {
@@ -134,9 +134,9 @@
       }
     }
 
-    async function syncBank(accountId) {
+    async function syncBank(accountId, reqId) {
       try {
-        await fetchJson('/api/sync', {method: 'POST', body: JSON.stringify({user_id: 1, provider_account_id: accountId})});
+        await fetchJson('/api/sync', {method: 'POST', body: JSON.stringify({user_id: 1, provider_account_id: accountId, req_id: reqId})});
       } catch (err) {
         alert('Sync failed: ' + err.message);
       }
